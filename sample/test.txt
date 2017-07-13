@@ -1,8 +1,0 @@
-This is a sample file to test AES encryption algorithm.
-
-Here is line 3
-Line 2 is just a newline.
-		
-Line 5 has 5 spaces and a tab.
-1234567890 abcde fghik lmnop qrstu vwxyz
-This is the last line of the file.
