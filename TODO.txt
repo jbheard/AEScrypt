@@ -1,0 +1,4 @@
+- Add EBC mode
+- Create and test makefile
+- Create sln project
+- Add non-random method of generating IV. In case of lost keys the IV will be recoverable (make optional).
