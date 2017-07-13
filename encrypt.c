@@ -10,7 +10,7 @@
   * from a password.
   **/
 
-/* OH MY GOD SO MANY INCLUDES */
+/* OH SO MANY INCLUDES */
 #include <stdio.h>    // printf, perror
 #include <stdlib.h>   // malloc, rand
 #include <limits.h>   // realpath
@@ -49,7 +49,7 @@ const char kPathSeparator =
 #endif
 
 
-static int v_flag; // Verbose mode
+static int v_flag = 0, s_flag = 0; // Verbose mode
 static uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
 static uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
@@ -88,12 +88,12 @@ int main(int argc, char **argv) {
 		printf("Error: Could not find \"%s\", please check that it is a file or directory and there are no typos.\n", argv[1]);
 		return 1;
 	}
-	v_flag = 0; // Set v flag
+
 	const char *path = argv[1]; // Descriptive alias for argv[1]
 	gen_iv(iv_ptr); // Generate an init vector
 	Iv = iv_ptr; // Set internal iv pointer to our own
 	
-	int e_flag = 1, r_flag = 0, key_flag = 0, s_flag = 0;
+	int e_flag = 1, r_flag = 0, key_flag = 0;
 	int c;
 	FILE *fv = NULL;
 	while((c = getopt (argc, argv, "vsredf:k:")) != -1) {
@@ -124,8 +124,10 @@ int main(int argc, char **argv) {
 					return -1;
 				}
 				if(v_flag) printf("Reading key from file.\n");
+				fread(&s_flag, sizeof s_flag, 1, fv);
 				fread(key, 1, 32, fv);
-				fread(Iv, 1, 32, fv);
+				if(!s_flag)
+					fread(Iv, 1, 32, fv);
 				fclose(fv);
 				key_flag = 2;
 				break;
@@ -168,8 +170,10 @@ int main(int argc, char **argv) {
 			printf("Error: Could not create key file. Aborting...\n");
 			return 1;
 		}
+		fwrite(&s_flag, sizeof s_flag, 1, fv); // Write mode
 		fwrite(key, 1, 32, fv);
-		fwrite(iv_ptr, 1, 32, fv);
+		if(!s_flag)
+			fwrite(iv_ptr, 1, 32, fv);
 		fclose(fv);
 		
 		printf("Created key file \"%s\"\n", buf); // Let user know name of key file
@@ -326,7 +330,11 @@ int encrypt(const char *fname) {
 			memset(input + len, 0, pad);
 		}
 		// Encrypt the buffer
-		AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
+		if(s_flag)
+			AES_ECB_encrypt(input, key, output, len+pad);
+		else
+			AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
+		
 		// Write size of data
 		fwrite(&len, sizeof len, 1, fv_out);
 		// Write actual data with padding
@@ -422,7 +430,10 @@ int decrypt(const char *fname) {
 			return -1;
 		}
 		// Decrypt the data
-		AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
+		if(s_flag)
+			AES_ECB_decrypt(input, key, output, len+pad);
+		else
+			AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
 		// Write only the data to output (not zero padding)
 		fwrite(output, 1, len, fv_out);
 		rtotal += len + pad + sizeof len;
