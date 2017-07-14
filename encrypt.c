@@ -49,7 +49,7 @@ const char kPathSeparator =
 #endif
 
 
-static int v_flag = 0, s_flag = 0; // Verbose mode
+static int v_flag = 0, ecb_flag = 0; // Verbose mode
 static uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
 static uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
 	while((c = getopt (argc, argv, "vsredf:k:")) != -1) {
 		switch(c) {
 			case 's':
-				s_flag = 1;
+				ecb_flag = 1;
 				break;
 			case 'v':
 				v_flag += 1;
@@ -124,9 +124,9 @@ int main(int argc, char **argv) {
 					return -1;
 				}
 				if(v_flag) printf("Reading key from file.\n");
-				fread(&s_flag, sizeof s_flag, 1, fv);
+				fread(&ecb_flag, sizeof ecb_flag, 1, fv);
 				fread(key, 1, 32, fv);
-				if(!s_flag)
+				if(!ecb_flag)
 					fread(Iv, 1, 32, fv);
 				fclose(fv);
 				key_flag = 2;
@@ -145,19 +145,34 @@ int main(int argc, char **argv) {
 		}
 	}
 	
-	if(key_flag != 2 && e_flag == 0) {
+	// If the user does not provide a key to decrypt, use default
+	if(!key_flag && e_flag == 0) {
 		printf("Please specify a key file to use for decrypting.\n");
 		return 1;
+	} else if(!key_flag && ecb_flag) {
+		/* Quick note about this, the only reason a user should use ECB mode is for a re-usable key. 
+		 * This is more like a password that they can use rather than having to keep a file somewhere.
+		 * ECB is conderably less secure than CBC mode, so if the user does not intend to remember a 
+		 * password anyway, it is much more effective to use CBC AES.
+		 */
+		printf("To use ECB mode, you need to enter a key or key file.\nFor a randomly generated key, use the more secure CBC mode.\n");
+		return 1;
 	}
-	
-	if(key_flag != 1) {
+
+	// If the user did not specify a key file, create one
+	if(key_flag != 2) {
 		if(v_flag) printf("Creating key file...\n");
 		char buf[20] = {0};
 		int i = 1;
 		
-		// Quick string to seed key
-		if(!key_flag)
-			setKey("TwelthNight", 11);
+		// Create random seed for key
+		if(!key_flag) {
+			srand(time(0));
+			char tmp_key[32] = {0};
+			for(int i = 0; i < 32; i++)
+				tmp_key[i] = rand() % 0xFF;
+			setKey(tmp_key, 11);
+		}
 		
 		// Get unused name for file
 		sprintf(buf, "key-%d.aes", i);
@@ -171,9 +186,9 @@ int main(int argc, char **argv) {
 			printf("Error: Could not create key file. Aborting...\n");
 			return 1;
 		}
-		fwrite(&s_flag, sizeof s_flag, 1, fv); // Write mode
+		fwrite(&ecb_flag, sizeof ecb_flag, 1, fv); // Write mode
 		fwrite(key, 1, 32, fv);
-		if(!s_flag)
+		if(!ecb_flag)
 			fwrite(iv_ptr, 1, 32, fv);
 		fclose(fv);
 		
@@ -331,7 +346,7 @@ int encrypt(const char *fname) {
 			memset(input + len, 0, pad);
 		}
 		// Encrypt the buffer
-		if(s_flag)
+		if(ecb_flag)
 			AES_ECB_encrypt(input, key, output, len+pad);
 		else
 			AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
@@ -431,7 +446,7 @@ int decrypt(const char *fname) {
 			return -1;
 		}
 		// Decrypt the data
-		if(s_flag)
+		if(ecb_flag)
 			AES_ECB_decrypt(input, key, output, len+pad);
 		else
 			AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
