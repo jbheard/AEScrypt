@@ -33,10 +33,10 @@
 #include "aes.h"      // AES-256 encryption
 #include "sha256.h"   // SHA-256 hashing
 
-#ifndef CHUNK_SIZE  // Max size of chunk to read at a time
+#ifndef CHUNK_SIZE    // Max size of chunk to read at a time
 	#define CHUNK_SIZE		2048
 #endif
-#ifndef PAD_SIZE    // To calculate how much padding to add to data
+#ifndef PAD_SIZE      // To calculate how much padding to add to data
 	#define PAD_SIZE		(BLOCKLEN)
 #endif
 
@@ -150,13 +150,14 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 	
-	if(!key_flag) {
+	if(key_flag != 1) {
 		if(v_flag) printf("Creating key file...\n");
 		char buf[20] = {0};
 		int i = 1;
 		
 		// Quick string to seed key
-		setKey("TwelthNight", 11);
+		if(!key_flag)
+			setKey("TwelthNight", 11);
 		
 		// Get unused name for file
 		sprintf(buf, "key-%d.aes", i);
@@ -194,7 +195,7 @@ int main(int argc, char **argv) {
 		printf("Error: \"%s\" does not seem to be a file. Please check and try again.\n", path);
 		return 1;
 	}
-		
+	
 	return 0;
 }
 
@@ -470,12 +471,3 @@ int decrypt(const char *fname) {
 
 	return 0;
 }
-
-
-
-
-
-
-
-
-
