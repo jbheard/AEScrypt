@@ -5,4 +5,4 @@
 - Rewrite AES to have GPU support
 - Add other crypto options (twofish, OTP, RSA?) (going to need to rename this repo)
 - Use getopt_long
-- Split files, add comments, make code more generally readable/concise
+- Organize files, add comments, make code more generally readable/concise
