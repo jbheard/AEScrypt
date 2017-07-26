@@ -1,3 +1,8 @@
 - Create and test makefile
 - Create sln project
-- Add non-random method of generating IV. In case of lost keys the IV will be recoverable (make optional).
+- Test on *nix environment
+- Replace C rand() with something cryptographically secure
+- Rewrite AES to have GPU support
+- Add other crypto options (twofish, OTP, RSA?) (going to need to rename this repo)
+- Use getopt_long
+- Split files, add comments, make code more generally readable/concise
