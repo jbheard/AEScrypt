@@ -1,173 +1,12 @@
-/** AES encryption software
-  *    @author Jacob Heard
-  * 
-  * Command line program to encrypt a file or directory using AES. 
-  * Accepts key as text input or a file. If given a password as key, 
-  * will create a key file.
-  * DO NOT LOSE THE FILE. The key file cannot be recreated from the password. 
-  * If you would like to use a password use the option -s for simple mode (ECB)
-  * This will use a less secure version of AES, but the key file can be recreated 
-  * from a password.
-  **/
-
-
 #include "encrypt.h"
 
 
-int main(int argc, char **argv) {
-	if(argc < 2) {
-		printf("Usage: %s path [-r -ed] [-k key] [-f keyfile]\nUse %s --help to show help page.\n", argv[0], argv[0]);
-		return 0;
-	}
-	/* Display help page */
-	if(strcmp(argv[1], "--help") == 0) {
-		printf("Usage: %s path [-r -ed] [-k key] [-f keyfile] [-s]\n", argv[0]);
-		printf("  Encrypts a file or directory using AES. Applies a given key or generates one randomly into a file.\n\n");
-		printf("  path    The file/path to work on\n");
-		printf("  -r      Recursively search files\n");
-		printf("  -e      Sets mode to encrypt given file/directory\n");
-		printf("  -d      Sets mode to decrypt given file/directory\n");
-		printf("  -k      Sets seed for key to \"key\"\n");
-		printf("  -f      Sets key to the contents of \"keyfile\"\n");
-		printf("  -s      Uses ECB over CBC version of AES. Less secure, but the key file can be recreated.\n");
-		printf("  -v(vv)  Verbose mode. Use more/less Vs depending on how verbose you want it.\n");
-		printf("\n");
-		return 0;
-	}
-	
-	/* This shouldn't happen, but idk. Maybe someone on *nux will try to encrypt a pipe or something */
-	if(!is_file(argv[1]) && !is_dir(argv[1])) {
-		printf("Error: Could not find \"%s\", please check that it is a file or directory and there are no typos.\n", argv[1]);
-		return 1;
-	}
-
-	const char *path = argv[1]; // Descriptive alias for argv[1]
-	gen_iv(iv_ptr); // Generate an init vector
-	Iv = iv_ptr; // Set internal iv pointer to our own
-	
-	int e_flag = 1, r_flag = 0, key_flag = 0;
-	int c;
-	FILE *fv = NULL;
-	while((c = getopt (argc, argv, "vsredf:k:")) != -1) {
-		switch(c) {
-			case 's':
-				ecb_flag = 1;
-				break;
-			case 'v':
-				v_flag += 1;
-				break;
-			case 'r':
-				r_flag = 1;
-				break;
-			case 'e':
-				e_flag = 1;
-				break;
-			case 'd':
-				e_flag = 0;
-				break;
-			case 'k':
-				setKey(optarg, strlen(optarg));
-				key_flag = 1;
-				break;
-			case 'f':
-				fv = fopen(optarg, "rb");
-				if(fv == NULL) {
-					printf("Error opening key file.\n");
-					return -1;
-				}
-				v_print(1, "Reading key from file.\n");
-				fread(&ecb_flag, sizeof ecb_flag, 1, fv);
-				fread(key, 1, 32, fv);
-				if(!ecb_flag)
-					fread(Iv, 1, 32, fv);
-				fclose(fv);
-				key_flag = 2;
-				break;
-			case '?':
-				if(optopt == 'f' || optopt == 'k')
-					printf("Option '-%c' requires an argument.\n", optopt);
-				else
-					printf("Unknown option: '-%c'\n", optopt);
-				return 1;
-				break;
-			default:
-				printf("An unknown error has ocurred.\n");
-				return 1;
-				break;
-		}
-	}
-	
-	// If the user does not provide a key to decrypt, use default
-	if(!key_flag && e_flag == 0) {
-		printf("Please specify a key file to use for decrypting.\n");
-		return 1;
-	} else if(!key_flag && ecb_flag) {
-		/* Quick note about this, the only reason a user should use ECB mode is for a re-usable key. 
-		 * This is more like a password that they can use rather than having to keep a file somewhere.
-		 * ECB is conderably less secure than CBC mode, so if the user does not intend to remember a 
-		 * password anyway, it is much more effective to use CBC AES.
-		 */
-		printf("To use ECB mode, you need to enter a key or key file.\nFor a randomly generated key, use the more secure CBC mode.\n");
-		return 1;
-	}
-
-	// If the user did not specify a key file, create one
-	if(key_flag != 2) {
-		v_print(1, "Creating key file...\n");
-		char buf[20] = {0};
-		int i = 1;
-		
-		// Create random seed for key
-		if(!key_flag) {
-			srand(time(0));
-			char tmp_key[32] = {0};
-			for(int i = 0; i < 32; i++)
-				tmp_key[i] = rand() % 0xFF;
-			setKey(tmp_key, 11);
-		}
-		
-		// Get unused name for file
-		sprintf(buf, "key-%d.aes", i);
-		while(access(buf, F_OK) != -1) {
-			sprintf(buf, "key-%d.aes", ++i);
-		}
-		
-		// Create file and write key+iv
-		fv = fopen(buf, "wb");
-		if(fv == NULL) {
-			printf("Error: Could not create key file. Aborting...\n");
-			return 1;
-		}
-		fwrite(&ecb_flag, sizeof ecb_flag, 1, fv); // Write mode
-		fwrite(key, 1, 32, fv);
-		if(!ecb_flag)
-			fwrite(iv_ptr, 1, 32, fv);
-		fclose(fv);
-		
-		printf("Created key file \"%s\"\n", buf); // Let user know name of key file
-	}
-	
-	if(!r_flag && !is_file(path)) {
-		printf("Error: \"%s\" could not be found.\n", path);
-		return 1;
-	}
-	if(r_flag) // Recursively find and encrypt/decrypt files
-		traverse(path, e_flag);
-	else if(is_file(path)) { // Make sure we are working with a file
-		if(e_flag)
-			encrypt(path);
-		else
-			decrypt(path);
-	} else {
-		printf("Error: \"%s\" does not seem to be a file. Please check and try again.\n", path);
-		return 1;
-	}
-	
-	return 0;
-}
+int v_flag = 0, ecb_flag = 0; // Verbose mode
+uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
+uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
 
-// Sets AES256 key to the SHA256 hash of some data
+/* Sets AES256 key to the SHA256 hash of some data */
 void setKey(const char *k, int len) {
 	v_print(2, "Creating and setting key.\n");
 	SHA256_CTX ctx; // Create CTX object on stack
@@ -176,27 +15,46 @@ void setKey(const char *k, int len) {
 	sha256_final(&ctx, key); // Get SHA256 hash for key
 }
 
-// Generates a random initialization vector for AES256
-void gen_iv(uint8_t *ptr) {
+/* Generates a random initialization vector for AES256 */
+int gen_iv(uint8_t *ptr) {
 	v_print(2, "Generating AES initialization vector.\n");
-	srand(time(0));
-	for(int i = 0; i < BLOCKLEN; i++) {
-		ptr[i] = rand() % 256;
-	}
+	HCRYPTPROV hCryptProv = 0; // Crypto context
+#ifdef _WIN32
+	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0)
+		return 1;
+	if(CryptGenRandom(hCryptProv, BLOCKLEN, ptr) == 0) // Generate random number
+		return 1;
+#else
+	//TODO verify this works on older *nix distros
+	if(getrandom(ptr, BLOCKLEN, GRND_NONBLOCK) == -1)
+		return 1;
+#endif
+	return 0;
 }
 
-// Returns 0 if path is not a file, nonzero otherwise
+/* Returns 0 if path is not a file, nonzero otherwise */
 int is_file(const char *path) {
+	// TODO Check for symlinks on windows?
     struct stat path_stat;
+#ifdef _WIN32
     stat(path, &path_stat);
+#else
+	// Handles symlinks on *nix machines
+	lstat(path, &path_stat);
+#endif
     return S_ISREG(path_stat.st_mode);
-//	return !is_dir(path);
 }
 
-// Returns 0 if path is not a directory, nonzero otherwise
+/* Returns 0 if path is not a directory, nonzero otherwise */
 int is_dir(const char *path) {
+	// TODO Check for symlinks on windows?
     struct stat path_stat;
+#ifdef _WIN32
     stat(path, &path_stat);
+#else
+	// Handles symlinks on *nix machines
+	lstat(path, &path_stat);
+#endif
     return S_ISDIR(path_stat.st_mode);
 }
 
