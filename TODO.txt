@@ -1,8 +1,13 @@
 - Create and test makefile
-- Create sln project
-- Test on *nix environment
-- Replace C rand() with something cryptographically secure
+- Create sln project for Windows builds without gcc
+- Build and test on *nix environment
+
+- Replace C rand() with something cryptographically secure (ISAAC? Need good way to seed randoms)
+- Add extension to encrypted files
+- Add key checksum to encrypted files
+
 - Rewrite AES to have GPU support
-- Add other crypto options (twofish, OTP, RSA?) (going to need to rename this repo)
-- Use getopt_long
+- Implement getopt_long and add better options
 - Organize files, add comments, make code more generally readable/concise
+
+- Add other crypto options (twofish, RSA, one-time-pad, viginere?, 3DES?) (going to need to rename this repo)

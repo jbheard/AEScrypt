@@ -10,56 +10,8 @@
   * from a password.
   **/
 
-/* OH SO MANY INCLUDES */
-#include <stdio.h>    // printf, perror
-#include <stdlib.h>   // malloc, rand
-#include <limits.h>   // realpath
-#include <time.h>     // time
-#include <string.h>   // memset
 
-#include <stdint.h>   // uint32_t, uint8_t
-#include <getopt.h>   // getopt
-
-#include <sys/types.h>
-#include <sys/stat.h> // lstat, S_ISDIR, S_ISREG
-#include <unistd.h>
-#include <dirent.h>   // opendir, readdir
-
-#ifdef _WIN32
-#include <windows.h>  // GetFullPathName
-#endif
-
-
-#include "aes.h"      // AES-256 encryption
-#include "sha256.h"   // SHA-256 hashing
-
-#ifndef CHUNK_SIZE    // Max size of chunk to read at a time
-	#define CHUNK_SIZE		2048
-#endif
-#ifndef PAD_SIZE      // To calculate how much padding to add to data
-	#define PAD_SIZE		(BLOCKLEN)
-#endif
-
-/** Cross platform path separator **/
-const char kPathSeparator =
-#ifdef _WIN32
-                            '\\';
-#else
-                            '/';
-#endif
-
-
-static int v_flag = 0, ecb_flag = 0; // Verbose mode
-static uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
-static uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
-
-int encrypt(const char *fname);
-int decrypt(const char *fname);
-void traverse(const char *dir, int e_flag);
-int is_dir(const char *path);
-int is_file(const char *path);
-void gen_iv(uint8_t *ptr);
-void setKey(const char *k, int len);
+#include "encrypt.h"
 
 
 int main(int argc, char **argv) {
@@ -123,7 +75,7 @@ int main(int argc, char **argv) {
 					printf("Error opening key file.\n");
 					return -1;
 				}
-				if(v_flag) printf("Reading key from file.\n");
+				v_print(1, "Reading key from file.\n");
 				fread(&ecb_flag, sizeof ecb_flag, 1, fv);
 				fread(key, 1, 32, fv);
 				if(!ecb_flag)
@@ -161,7 +113,7 @@ int main(int argc, char **argv) {
 
 	// If the user did not specify a key file, create one
 	if(key_flag != 2) {
-		if(v_flag) printf("Creating key file...\n");
+		v_print(1, "Creating key file...\n");
 		char buf[20] = {0};
 		int i = 1;
 		
@@ -217,7 +169,7 @@ int main(int argc, char **argv) {
 
 // Sets AES256 key to the SHA256 hash of some data
 void setKey(const char *k, int len) {
-	if(v_flag >= 2) printf("Creating and setting key.\n");
+	v_print(2, "Creating and setting key.\n");
 	SHA256_CTX ctx; // Create CTX object on stack
 	sha256_init(&ctx); // Init CTX object
 	sha256_update(&ctx, (uint8_t*)k, len); // Add key data to CTX
@@ -226,7 +178,7 @@ void setKey(const char *k, int len) {
 
 // Generates a random initialization vector for AES256
 void gen_iv(uint8_t *ptr) {
-	if(v_flag >= 2) printf("Generating AES initialization vector.\n");
+	v_print(2, "Generating AES initialization vector.\n");
 	srand(time(0));
 	for(int i = 0; i < BLOCKLEN; i++) {
 		ptr[i] = rand() % 256;
@@ -251,7 +203,7 @@ int is_dir(const char *path) {
 
 /* Traverses the directory recursively, en/decrypting each file it passes over */
 void traverse(const char *path, int e_flag) {
-	if(v_flag >= 2) printf("Traversing directory \"%s\"\n", path);
+	v_print(2, "Traversing directory \"%s\"\n", path);
 	char buf[1024] = {0};
 	DIR *dir;
 	struct dirent *ent;
@@ -268,7 +220,7 @@ void traverse(const char *path, int e_flag) {
 #endif
 	
 			if(is_file(buf)) { // Check if file
-				if(v_flag >= 3) printf("%s is a file. Working...\n", buf);
+				v_print(3, "%s is a file. Working...\n", buf);
 				
 				if(e_flag)
 					encrypt(buf);
@@ -278,7 +230,7 @@ void traverse(const char *path, int e_flag) {
 			else if(is_dir(buf)) { // Check if directory
 				// Check directory is not ./ or ../
 				if(strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..")) {
-					if(v_flag >= 3) printf("%s is a directory. Traversing...\n", buf);
+					v_print(3, "%s is a directory. Traversing...\n", buf);
 					traverse(buf, e_flag); // Go a level deeper
 				}
 			}
@@ -301,15 +253,14 @@ void traverse(const char *path, int e_flag) {
  * Returns 0 on success, nonzero on failure
  */
 int encrypt(const char *fname) {
-	if(v_flag) printf("Encrypting file \"%s\"\n", fname);
+	v_print(1, "Encrypting file \"%s\"\n", fname);
 	FILE *fv = fopen(fname, "rb");
 	if(fv == NULL) {
-		if(v_flag)
-			printf("Error opening file.\n");
+		v_print(1, "Error opening file.\n");
 		return -1;
 	}
 
-	if(v_flag >= 2) printf("Creating temp file...\n");
+	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
 	int i = 1;
 	
@@ -321,12 +272,11 @@ int encrypt(const char *fname) {
 	
 	FILE *fv_out = fopen(buf, "wb");
 	if(fv_out == NULL) {
-		if(v_flag)
-			printf("Internal file error.\n");
+		v_print(1, "Internal file error.\n");
 		return -1;
 	}
 
-	if(v_flag >= 3) printf("Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
+	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
 	if(output == NULL || input == NULL) {
@@ -334,8 +284,7 @@ int encrypt(const char *fname) {
 		exit(1);
 	}
 	
-	if(v_flag >= 2)
-		printf("Reading %s...\n", fname);
+	v_print(2, "Reading %s...\n", fname);
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
 	while( (len = fread(input, 1, CHUNK_SIZE, fv)) ) {
 		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN;
@@ -358,20 +307,18 @@ int encrypt(const char *fname) {
 		rtotal += len;
 		wtotal += len + pad + sizeof len;
 	}
-	if(v_flag >= 2)
-		printf("Read %d bytes as %d chunks. Wrote %d bytes.\n", rtotal, (rtotal / CHUNK_SIZE)+1, wtotal);
+	v_print(2, "Read %d bytes as %d chunks. Wrote %d bytes.\n", rtotal, (rtotal / CHUNK_SIZE)+1, wtotal);
 	
 	// Cleanup resources
-	if(v_flag >= 3) printf("Closing \"%s\"...\n", fname);
+	v_print(3, "Closing \"%s\"...\n", fname);
 	fclose(fv);
-	if(v_flag >= 3) printf("Closing \"%s\"...\n", buf);
+	v_print(3, "Closing \"%s\"...\n", buf);
 	fclose(fv_out);
-	if(v_flag >= 3) printf("Freeing AES memory...\n");
+	v_print(3, "Freeing AES memory...\n");
 	free(input);
 	free(output);
 	
-	if(v_flag >= 2)
-		printf("Moving \"%s\" to \"%s\"...\n", buf, fname);
+	v_print(2, "Moving \"%s\" to \"%s\"...\n", buf, fname);
 	
 	// Rename temp file to main file
 	remove(fname); // Remove old file
@@ -379,15 +326,13 @@ int encrypt(const char *fname) {
 		printf("Error moving file.\n");
 		if(err == 4) { // If complete failure, delete the temp file
 			// Otherwise leave it in case data needs to be recovered somehow
-			if(v_flag >= 2)
-				printf("Removing temp file...\n");
+			v_print(2, "Removing temp file...\n");
 			remove(buf);
 		}
 		return -1;
 	}
 	
-	if(v_flag)
-		printf("Done working on \"%s\"\n\n", fname);
+	v_print(1, "Done working on \"%s\"\n\n", fname);
 	
 	return 0;
 }
@@ -397,15 +342,14 @@ int encrypt(const char *fname) {
  * Returns 0 on success, -1 on failure
  */
 int decrypt(const char *fname) {
-	if(v_flag) printf("Decrypting file \"%s\"\n", fname);
+	v_print(1, "Decrypting file \"%s\"\n", fname);
 	FILE *fv = fopen(fname, "rb");
 	if(fv == NULL) {
-		if(v_flag)
-			printf("Error opening file.\n");
+		v_print(1, "Error opening file.\n");
 		return -1;
 	}
 	
-	if(v_flag >= 2) printf("Creating temp file...\n");
+	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
 	int i = 1;
 	
@@ -417,12 +361,11 @@ int decrypt(const char *fname) {
 	
 	FILE *fv_out = fopen(buf, "wb");
 	if(fv_out == NULL) {
-		if(v_flag)
-			printf("Internal file error.\n");
+		v_print(1, "Internal file error.\n");
 		return -1;
 	}
 	
-	if(v_flag >= 3) printf("Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
+	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
 	if(output == NULL || input == NULL) {
@@ -430,8 +373,7 @@ int decrypt(const char *fname) {
 		exit(1);
 	}
 	
-	if(v_flag >= 2) 
-		printf("Reading %s...\n", fname);
+	v_print(2, "Reading %s...\n", fname);
 	
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
 	// Read size of data in loop
@@ -455,34 +397,44 @@ int decrypt(const char *fname) {
 		rtotal += len + pad + sizeof len;
 		wtotal += len;
 	}
-	if(v_flag >= 2)
-		printf("Read %d bytes as %d chunks. Wrote %d bytes.\n", rtotal, (rtotal / CHUNK_SIZE)+1, wtotal);
+	v_print(2, "Read %d bytes as %d chunks. Wrote %d bytes.\n", rtotal, (rtotal / CHUNK_SIZE)+1, wtotal);
 	
 	// Cleanup resources
-	if(v_flag >= 3) printf("Closing \"%s\"...\n", fname);
+	v_print(3, "Closing \"%s\"...\n", fname);
 	fclose(fv);
-	if(v_flag >= 3) printf("Closing \"%s\"...\n", buf);
+	v_print(3, "Closing \"%s\"...\n", buf);
 	fclose(fv_out);
-	if(v_flag >= 3) printf("Freeing AES memory...\n");
+	v_print(3, "Freeing AES memory...\n");
 	free(output);
 	free(input);
 	
-	if(v_flag >= 2)
-		printf("Moving \"%s\" to \"%s\"...\n", buf, fname);
+	v_print(2, "Moving \"%s\" to \"%s\"...\n", buf, fname);
 	
 	// Rename temp file to main file
 	remove(fname); // Remove old file
 	if( (err = rename(buf, fname)) != 0) {
 		printf("Error moving file.\n");
 		if(err == 4) { // If complete failure, delete the temp file 
-			if(v_flag >= 2)
-				printf("Removing temp file...\n");
+			v_print(2, "Removing temp file...\n");
 			remove(buf);
 		}
 		return -1;
 	}
-	if(v_flag)
-		printf("Done working on \"%s\"\n\n", fname);
+	v_print(1, "Done working on \"%s\"\n\n", fname);
 
 	return 0;
+}
+
+
+/* Print a verbose message where v is the verbosity rank 
+ * e.g. if the call is v_print(2, "some message") then the program 
+ * needs to be run with at least 2 v flags (-vv) to print the message
+ */
+void v_print(int v, const char* format, ...)
+{
+    va_list argptr;
+    va_start(argptr, format);
+    if(v_flag >= v)
+		vprintf(format, argptr);
+    va_end(argptr);
 }
