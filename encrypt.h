@@ -3,7 +3,7 @@
 
 
 #include <stdio.h>    // printf, perror
-#include <stdlib.h>   // malloc, rand
+#include <stdlib.h>   // malloc
 #include <limits.h>   // realpath
 #include <time.h>     // time
 #include <string.h>   // memset

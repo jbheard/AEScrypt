@@ -121,10 +121,24 @@ int main(int argc, char **argv) {
 		
 		// Create random seed for key
 		if(!key_flag) {
-			srand(time(0));
 			char tmp_key[32] = {0};
-			for(int i = 0; i < 32; i++)
-				tmp_key[i] = rand() % 0xFF;
+			HCRYPTPROV hCryptProv = 0; // Crypto context
+#ifdef _WIN32
+	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0) {
+		printf("Error generating key.\n");
+		return EXIT_FAILURE;
+	}
+	if(CryptGenRandom(hCryptProv, BLOCKLEN, ptr) == 0) { // Generate random number
+		printf("Error generating key.\n");
+		return EXIT_FAILURE;
+	}
+#else
+	//TODO verify this works on older *nix distros, or find workaround
+	if(getrandom(ptr, BLOCKLEN, GRND_NONBLOCK) == -1) {
+		printf("Error generating key.\n");
+		return EXIT_FAILURE;
+	}
+#endif
 			setKey(tmp_key, 11);
 		}
 		

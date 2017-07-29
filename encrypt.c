@@ -25,7 +25,7 @@ int gen_iv(uint8_t *ptr) {
 	if(CryptGenRandom(hCryptProv, BLOCKLEN, ptr) == 0) // Generate random number
 		return 1;
 #else
-	//TODO verify this works on older *nix distros
+	//TODO verify this works on older *nix distros, or find workaround
 	if(getrandom(ptr, BLOCKLEN, GRND_NONBLOCK) == -1)
 		return 1;
 #endif
