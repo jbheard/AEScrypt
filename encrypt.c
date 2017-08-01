@@ -18,8 +18,8 @@ void setKey(const char *k, int len) {
 /* Generates a random initialization vector for AES256 */
 int gen_iv(uint8_t *ptr) {
 	v_print(2, "Generating AES initialization vector.\n");
-	HCRYPTPROV hCryptProv = 0; // Crypto context
 #ifdef _WIN32
+	HCRYPTPROV hCryptProv = 0; // Crypto context
 	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0)
 		return 1;
 	if(CryptGenRandom(hCryptProv, BLOCKLEN, ptr) == 0) // Generate random number

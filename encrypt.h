@@ -33,7 +33,6 @@
 	#define PAD_SIZE		(BLOCKLEN)
 #endif
 
-/* This just deals with having global variables in an easy way */
 /** Cross platform path separator **/
 static const char kPathSeparator =
 #ifdef _WIN32
