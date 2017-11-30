@@ -36,9 +36,9 @@
 /** Cross platform path separator **/
 static const char kPathSeparator =
 #ifdef _WIN32
-							'\\';
+                                   '\\';
 #else
-							'/';
+                                   '/';
 #endif
 
 
@@ -52,7 +52,9 @@ void traverse(const char *dir, int e_flag);
 int is_dir(const char *path);
 int is_file(const char *path);
 int gen_iv(uint8_t *ptr);
-void setKey(const char *k, int len);
+void sha256(const char *in, char *out, int len);
+int getpass(const char *prompt, char *buf, int len);
 void v_print(int v, const char* format, ...);
+size_t readline(char *line, int max_bytes, FILE *stream);
 
 #endif

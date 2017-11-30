@@ -15,19 +15,20 @@
 
 int main(int argc, char **argv) {
 	if(argc < 2) {
-		printf("Usage: %s path [-r -ed] [-k key] [-f keyfile]\nUse %s --help to show help page.\n", argv[0], argv[0]);
+		printf("Usage: %s path [-r -ed] [-g -p] [-k keyfile]\nUse %s --help to show help page.\n", argv[0], argv[0]);
 		return EXIT_SUCCESS;
 	}
 	/* Display help page */
 	if(strcmp(argv[1], "--help") == 0) {
-		printf("Usage: %s path [-r -ed] [-p password] [-k keyfile] [-s]\n", argv[0]);
+		printf("Usage: %s path [-r -ed] [-p] [-k keyfile] [-s]\n", argv[0]);
 		printf("  Encrypts a file or directory using AES. Applies a given key or generates one randomly into a file.\n\n");
 		printf("  path    The file/path to work on\n");
 		printf("  -r      Recursively search files\n");
 		printf("  -e      Sets mode to encrypt given file/directory\n");
 		printf("  -d      Sets mode to decrypt given file/directory\n");
-		printf("  -p      Sets seed for key to \"password\"\n");
+		printf("  -p      Opens password prompt to seed key\n");
 		printf("  -k      Use \"keyfile\" for key\n");
+		printf("  -g      Generate a keyfile to use in place of password\n");
 		printf("  -s      Uses ECB over CBC version of AES. Less secure, can use password instead of keyfile.\n");
 		printf("  -v(vv)  Verbose mode. Use more/less Vs depending on how verbose you want it.\n");
 		printf("\n");
@@ -41,17 +42,19 @@ int main(int argc, char **argv) {
 	}
 
 	const char *path = argv[1]; // Descriptive alias for argv[1]
+	v_print(2, "Generating AES initialization vector.\n");
 	if(gen_iv(iv_ptr) != 0) { // Generate an init vector
 		printf("Error generating IV\n");
 		return EXIT_FAILURE;
 	}
 	Iv = iv_ptr; // Set internal iv pointer to our own
 
-	char kfname[256] = {0};
+	char kfname[256] = {0}, pass[128] = {0};
 	int e_flag = 1, r_flag = 0, key_flag = 0;
-	int c;
+	int g_flag = 0;
+	int c, len;
 	FILE *fv = NULL;
-	while((c = getopt (argc, argv, "vsredk:p:")) != -1) {
+	while((c = getopt (argc, argv, "vsredpk:")) != -1) {
 		switch(c) {
 			case 's':
 				ecb_flag = 1;
@@ -65,11 +68,23 @@ int main(int argc, char **argv) {
 			case 'e':
 				e_flag = 1;
 				break;
+			case 'g':
+				g_flag = 1;
+				break;
 			case 'd':
 				e_flag = 0;
 				break;
 			case 'p':
-				setKey(optarg, strlen(optarg));
+				len = getpass("password: ", pass, 128);
+				v_print(2, "Creating and setting key.\n");
+				sha256(pass, (char*)key, len);
+				// fix IV
+				sha256(pass, (char*)iv_ptr, BLOCKLEN);
+				for(int i = 0; i < 8; i++) {
+					for(int i = 0; i < BLOCKLEN/2; i++)
+						iv_ptr[i] ^= iv_ptr[BLOCKLEN-i-1];
+					sha256((char*)iv_ptr, (char*)iv_ptr, BLOCKLEN);
+				}
 				key_flag = 1;
 				break;
 			case 'k':
@@ -77,20 +92,20 @@ int main(int argc, char **argv) {
 				key_flag = 2;
 				break;
 			case '?':
-				if(optopt == 'f' || optopt == 'k')
+				if(optopt == 'k')
 					printf("Option '-%c' requires an argument.\n", optopt);
 				else
 					printf("Unknown option: '-%c'\n", optopt);
 				return EXIT_FAILURE;
 				break;
 			default:
-				printf("An unknown error has ocurred.\n");
+				printf("The option -%c is unimplemented\n", optopt);
 				return EXIT_FAILURE;
 				break;
 		}
 	}
 	
-	// If the user does not provide a key to decrypt, use default
+	// If the user does not provide a key to decrypt, die
 	if(!key_flag && e_flag == 0) {
 		printf("Please specify a key file to use for decrypting.\n");
 		return EXIT_FAILURE;
@@ -129,7 +144,7 @@ int main(int argc, char **argv) {
 				return EXIT_FAILURE;
 			}
 #endif
-			setKey(tmp_key, 11);
+			sha256(tmp_key, (char*)key, 32);
 		}
 		
 		if(kfname[0] == '\0') { // If the key file name was not specified
@@ -139,20 +154,21 @@ int main(int argc, char **argv) {
 				sprintf(kfname, "key-%d.aes", ++i);
 			}
 		}
-		
-		// Create file and write key+iv
-		fv = fopen(kfname, "wb");
-		if(fv == NULL) {
-			printf("Error: Could not create key file. Aborting...\n");
-			return EXIT_FAILURE;
+
+		if(g_flag && key_flag == 1) {
+			// Create file and write key+iv
+			fv = fopen(kfname, "wb");
+			if(fv == NULL) {
+				printf("Error: Could not create key file. Aborting...\n");
+				return EXIT_FAILURE;
+			}
+			fwrite(&ecb_flag, sizeof ecb_flag, 1, fv); // Write mode
+			fwrite(key, 1, 32, fv);
+			if(!ecb_flag)
+				fwrite(iv_ptr, 1, 32, fv);
+			fclose(fv);
+			printf("Created key file \"%s\"\n", kfname); // Let user know name of key file
 		}
-		fwrite(&ecb_flag, sizeof ecb_flag, 1, fv); // Write mode
-		fwrite(key, 1, 32, fv);
-		if(!ecb_flag)
-			fwrite(iv_ptr, 1, 32, fv);
-		fclose(fv);
-		
-		printf("Created key file \"%s\"\n", kfname); // Let user know name of key file
 	}
 	else if(key_flag == 2 && !e_flag) { // A key file was specified for encryption
 		// Open the file and read the key
@@ -181,7 +197,7 @@ int main(int argc, char **argv) {
 		else
 			decrypt(path);
 	} else {
-		printf("Error: \"%s\" does not seem to be a file. Please check and try again.\n", path);
+		printf("Error: \"%s\" is not a file\n", path);
 		return EXIT_FAILURE;
 	}
 	

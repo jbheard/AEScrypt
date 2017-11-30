@@ -1,23 +1,108 @@
 #include "encrypt.h"
 
+#ifndef _WIN32
+#include <termios.h>
+
+int getpass(const char *prompt, char *buf, int len) {
+    struct termios oflags, nflags;
+	
+    /* disabling echo */
+    tcgetattr(fileno(stdin), &oflags);
+    nflags = oflags;
+    nflags.c_lflag &= ~ECHO;
+    nflags.c_lflag |= ECHONL;
+
+    if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
+        perror("tcsetattr failed to disable echo");
+        return -1;
+    }
+
+    printf("%s", prompt); // Print prompt
+    len = readline(buf, len, stdin); // Get line
+	
+    /* restore terminal */
+    if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
+        perror("tcsetattr failed to restore terminal");
+        return -1;
+    }
+	printf("\n");
+	return len;
+}
+
+#else
+#include <windows.h>
+
+int getpass(const char *prompt, char *buf, int len) {
+	DWORD oflags;
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+
+	// Get initial console mode
+	if(!GetConsoleMode(h, &oflags)) {
+		perror("retrieving console mode");
+		return -1;
+	}
+	// Disable echo on input
+	if(!SetConsoleMode(h, oflags & (~ENABLE_ECHO_INPUT))){
+		perror("disabling output");
+		return -1;
+	}
+
+	// Read the actual password
+    printf("%s", prompt); // Print prompt
+    len = readline(buf, len, stdin); // Get password & length
+	
+	// Restore console state
+	if(!SetConsoleMode(h, oflags)) {
+		perror("restoring console");
+		return -1;
+	}
+	printf("\n");
+	return len;
+}
+
+#endif
+
 
 int v_flag = 0, ecb_flag = 0; // Verbose mode
 uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
 uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
 
-/* Sets AES256 key to the SHA256 hash of some data */
-void setKey(const char *k, int len) {
-	v_print(2, "Creating and setting key.\n");
+/* 
+ * Converts a string of bytes into a 256bit hash using SHA2-256
+ * @param in The array of bytes to hash
+ * @param out Pointer to output, needs at least 32 bytes free
+ * @param len The number of bytes from in to hash
+ */
+void sha256(const char *in, char *out, int len) {
 	SHA256_CTX ctx; // Create CTX object on stack
 	sha256_init(&ctx); // Init CTX object
-	sha256_update(&ctx, (uint8_t*)k, len); // Add key data to CTX
-	sha256_final(&ctx, key); // Get SHA256 hash for key
+	sha256_update(&ctx, (uint8_t*)in, len); // Add key data to CTX
+	sha256_final(&ctx, (uint8_t*)out); // Get SHA256 hash for key
+}
+
+/* reads a line and trims and trailing whitespace (excluding spaces) */
+size_t readline(char *line, int max_bytes, FILE *stream) {
+	fgets(line, max_bytes, stream);
+	size_t len = strlen(line);
+	int whitespace = 1; // loop condition, there is still whitespace
+	while(whitespace) {
+		switch(line[len-1]) {
+		case '\n': case '\r':
+		case '\f': case '\t':
+			line[len-1] = '\0';
+			len--;
+			break;
+		default:
+			whitespace = 0;
+			break;
+		}
+	}
+	return len;
 }
 
 /* Generates a random initialization vector for AES256 */
 int gen_iv(uint8_t *ptr) {
-	v_print(2, "Generating AES initialization vector.\n");
 #ifdef _WIN32
 	HCRYPTPROV hCryptProv = 0; // Crypto context
 	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0)
@@ -57,7 +142,6 @@ int is_dir(const char *path) {
 #endif
     return S_ISDIR(path_stat.st_mode);
 }
-
 
 /* Traverses the directory recursively, en/decrypting each file it passes over */
 void traverse(const char *path, int e_flag) {
@@ -107,12 +191,12 @@ void traverse(const char *path, int e_flag) {
  *  <Size of chunk> <CHUNK...>
  *  <EOF>
  * Where the size of the chunk is a uint32_t (4 byte unsigned int)
- * and the chunk is an array of type *uint8_t
- * Returns 0 on success, nonzero on failure
+ * and the chunk is an array of type uint8_t*
+ * Returns zero on success, nonzero on failure
  */
 int encrypt(const char *fname) {
 	v_print(1, "Encrypting file \"%s\"\n", fname);
-	FILE *fv = fopen(fname, "rb");
+	FILE *fv = fopen(fname, "rb+");
 	if(fv == NULL) {
 		v_print(1, "Error opening file.\n");
 		return -1;
@@ -120,6 +204,7 @@ int encrypt(const char *fname) {
 
 	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
+	char checksum[32] = {0};
 	int i = 1;
 	
 	// Get unused name for file
@@ -141,6 +226,10 @@ int encrypt(const char *fname) {
 		printf("Error allocating memory. Aborting...\n");
 		exit(1);
 	}
+
+	// Generate and write checksum to beginning of file
+	sha256((char*)key, checksum, 32);
+	fwrite(checksum, 1, 32, fv_out);
 	
 	v_print(2, "Reading %s...\n", fname);
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
@@ -209,6 +298,7 @@ int decrypt(const char *fname) {
 	
 	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
+	char checksum[32], checkcheck[32];
 	int i = 1;
 	
 	// Get unused name for file
@@ -228,6 +318,16 @@ int decrypt(const char *fname) {
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
 	if(output == NULL || input == NULL) {
 		printf("Error allocating memory. Aborting...\n");
+		exit(1);
+	}
+	
+	// Generate and write checksum to beginning of file
+	sha256((char*)key, checkcheck, 32);
+	fread(checksum, 1, 32, fv);
+	if(strncmp(checkcheck, checksum, 32) != 0) {
+		printf("Invalid checksum, quitting.\n");
+		free(output);
+		free(input);
 		exit(1);
 	}
 	
@@ -260,8 +360,10 @@ int decrypt(const char *fname) {
 	// Cleanup resources
 	v_print(3, "Closing \"%s\"...\n", fname);
 	fclose(fv);
+
 	v_print(3, "Closing \"%s\"...\n", buf);
 	fclose(fv_out);
+
 	v_print(3, "Freeing AES memory...\n");
 	free(output);
 	free(input);
@@ -288,11 +390,11 @@ int decrypt(const char *fname) {
  * e.g. if the call is v_print(2, "some message") then the program 
  * needs to be run with at least 2 v flags (-vv) to print the message
  */
-void v_print(int v, const char* format, ...)
-{
+void v_print(int v, const char* format, ...) {
     va_list argptr;
     va_start(argptr, format);
     if(v_flag >= v)
 		vprintf(format, argptr);
     va_end(argptr);
 }
+
