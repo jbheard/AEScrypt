@@ -62,8 +62,26 @@ int getpass(const char *prompt, char *buf, int len) {
 
 #endif
 
+int gen_randoms(char *buf, int bytes) {
+#ifdef _WIN32
+	HCRYPTPROV hCryptProv = 0; // Crypto context
+	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0) {
+		return 1;
+	}
+	if(CryptGenRandom(hCryptProv, bytes, (PBYTE)buf) == 0) { // Generate random number
+		return 1;
+	}
+#else
+	//TODO verify this works on older *nix distros, or find workaround
+	if(getrandom(buf, bytes, GRND_NONBLOCK) == -1) {
+		return 1;
+	}
+#endif
+	return 0;
+}
 
-int v_flag = 0, ecb_flag = 0; // Verbose mode
+int v_flag = 0; // Verbose mode
+int keysize = 128; // Default keysize
 uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
 uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
@@ -99,22 +117,6 @@ size_t readline(char *line, int max_bytes, FILE *stream) {
 		}
 	}
 	return len;
-}
-
-/* Generates a random initialization vector for AES256 */
-int gen_iv(uint8_t *ptr) {
-#ifdef _WIN32
-	HCRYPTPROV hCryptProv = 0; // Crypto context
-	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0)
-		return 1;
-	if(CryptGenRandom(hCryptProv, BLOCKLEN, ptr) == 0) // Generate random number
-		return 1;
-#else
-	//TODO verify this works on older *nix distros, or find workaround
-	if(getrandom(ptr, BLOCKLEN, GRND_NONBLOCK) == -1)
-		return 1;
-#endif
-	return 0;
 }
 
 /* Returns 0 if path is not a file, nonzero otherwise */
@@ -184,6 +186,14 @@ void traverse(const char *path, int e_flag) {
 	}
 }
 
+//DEBUG
+void printx(char *x, int len) {
+	printf("0x");
+	for(int i = 0; i < len; i+= sizeof(uint32_t)) 
+		printf("%X", *(uint32_t*)&x[i]);
+	printf("\n");
+}
+
 /*  Resulting output file will be in the format:
  *
  *  <Size of chunk> <CHUNK...>
@@ -223,12 +233,14 @@ int encrypt(const char *fname) {
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
 	if(output == NULL || input == NULL) {
+		output = (output) ? output : input; // Get the successful alloc (if there is one)
+		if(output != NULL) free(output); // If one alloc worked and the other failed, free the successful one
 		printf("Error allocating memory. Aborting...\n");
 		exit(1);
 	}
 
 	// Generate and write checksum to beginning of file
-	sha256((char*)key, checksum, 32);
+	sha256((char*)key, checksum, KEYLEN);
 	fwrite(checksum, 1, 32, fv_out);
 	
 	v_print(2, "Reading %s...\n", fname);
@@ -242,10 +254,7 @@ int encrypt(const char *fname) {
 			memset(input + len, 0, pad);
 		}
 		// Encrypt the buffer
-		if(ecb_flag)
-			AES_ECB_encrypt(input, key, output, len+pad);
-		else
-			AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
+		AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
 		
 		// Write size of data
 		fwrite(&len, sizeof len, 1, fv_out);
@@ -322,8 +331,16 @@ int decrypt(const char *fname) {
 	}
 	
 	// Generate and write checksum to beginning of file
-	sha256((char*)key, checkcheck, 32);
+	sha256((char*)key, checkcheck, KEYLEN);
 	fread(checksum, 1, 32, fv);
+	
+	// DEBUG
+	printf("Checksum: ");
+	printx(checkcheck, 32);
+	printf("Read:     ");
+	printx(checksum, 32);
+	// DEBUG
+	
 	if(strncmp(checkcheck, checksum, 32) != 0) {
 		printf("Invalid checksum, quitting.\n");
 		free(output);
@@ -346,10 +363,7 @@ int decrypt(const char *fname) {
 			return -1;
 		}
 		// Decrypt the data
-		if(ecb_flag)
-			AES_ECB_decrypt(input, key, output, len+pad);
-		else
-			AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
+		AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
 		// Write only the data to output (not zero padding)
 		fwrite(output, 1, len, fv_out);
 		rtotal += len + pad + sizeof len;
