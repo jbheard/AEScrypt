@@ -55,16 +55,19 @@ NOTE:   String length must be evenly divisible by 16byte (str_len % 16 == 0)
 typedef uint8_t state_t[4][4];
 static state_t* state;
 
-// The array that stores the round keys.
-static uint8_t RoundKey[keyExpSize];
+// Default to 128bit mode
+int KEYLEN = 16;
+static int Nk = 4;
+static int Nr = 10;
+
+// The array that stores the round keys. (set size to max roundkey size)
+static uint8_t RoundKey[240];
 
 // The Key input to the AES Program
 static const uint8_t* Key;
 
-#if defined(CBC) && CBC
-  // Initial Vector used only for CBC mode
-  uint8_t* Iv;
-#endif
+// Initial Vector used only for CBC mode
+uint8_t* Iv;
 
 // The lookup-tables are marked const so they can be placed in read-only storage instead of RAM
 // The numbers below can be computed dynamically trading ROM for RAM - 
@@ -428,12 +431,30 @@ static void InvCipher(void)
   AddRoundKey(0);
 }
 
-
 /*****************************************************************************/
 /* Public functions:                                                         */
 /*****************************************************************************/
-#if defined(ECB) && (ECB == 1)
 
+void setAESMode(const uint32_t mode) {
+	switch(mode){
+	case 256: // 256 bit mode
+		KEYLEN = 32;
+		Nk = 8;
+		Nr = 14;
+		break;
+	case 192: // 192 bit mode
+		KEYLEN = 24;
+		Nk = 6;
+		Nr = 12;
+		break;
+	case 128: //128 bit mode
+	default: // Default to 128 bit encryption
+		KEYLEN = 16;
+		Nk = 4;
+		Nr = 10;
+		break;
+	}
+}
 
 void AES_ECB_encrypt(const uint8_t* input, const uint8_t* key, uint8_t* output, const uint32_t length)
 {
@@ -460,15 +481,6 @@ void AES_ECB_decrypt(const uint8_t* input, const uint8_t* key, uint8_t *output, 
 
   InvCipher();
 }
-
-
-#endif // #if defined(ECB) && (ECB == 1)
-
-
-
-
-
-#if defined(CBC) && (CBC == 1)
 
 
 static void XorWithIv(uint8_t* buf)
@@ -506,7 +518,6 @@ void AES_CBC_encrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
     Iv = output;
     input += BLOCKLEN;
     output += BLOCKLEN;
-    //printf("Step %d - %d", i/16, i);
   }
 
   if (extra)
@@ -553,5 +564,3 @@ void AES_CBC_decrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
     InvCipher();
   }
 }
-
-#endif // #if defined(CBC) && (CBC == 1)
