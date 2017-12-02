@@ -10,26 +10,33 @@
 #define PASSWORD_MODE 1
 #define FILE_MODE     2
 
+void show_usage(char *name, int more) {
+	printf("Usage: %s path [-r -e -d -p -g -k <keyfile> -m <mode>]\n", name);
+	if(more) {
+		printf("  Encrypts a file or directory using AES. Applies a given key or generates one randomly into a file.\n\n");
+		printf("  path               Path to the file/directory to work on\n");
+		printf("  -r, --recursive    Recursively work on files in directory\n");
+		printf("  -e, --encrypt      Sets mode to encrypt given file/directory\n");
+		printf("  -d, --decrypt      Sets mode to decrypt given file/directory\n");
+		printf("  -p, --password     Prompt for password to use for key\n");
+		printf("  -g, --gen-key      Generate a keyfile (use with -p to seed keyfile from pass)\n");
+		printf("  -k, --keyfile      Load a key from file\n");
+		printf("  -m, --mode         Sets cipher mode (128/192/256) default:128\n");
+		printf("  -v(vv), --verbose  Run in verbose mode\n");
+		printf("\n");
+	} else {
+		printf("Use %s --help to show help page.\n", name);	
+	}
+}
+
 int main(int argc, char **argv) {
 	if(argc < 2) {
-		printf("Usage: %s path [-r -ed] [-p -g] [-k keyfile] [-m mode]\n", argv[0]);
-		printf("Use %s --help to show help page.\n", argv[0]);
+		show_usage(argv[0], 0);
 		return EXIT_SUCCESS;
 	}
-	/* Display help page */
-	if(strcmp(argv[1], "--help") == 0) {
-		printf("Usage: %s path [-r -ed] [-p -g] [-k keyfile] [-m mode]\n", argv[0]);
-		printf("  Encrypts a file or directory using AES. Applies a given key or generates one randomly into a file.\n\n");
-		printf("  path    The file/path to work on\n");
-		printf("  -r      Recursively search files\n");
-		printf("  -e      Sets mode to encrypt given file/directory\n");
-		printf("  -d      Sets mode to decrypt given file/directory\n");
-		printf("  -p      Opens password prompt to seed key\n");
-		printf("  -g      Generate a keyfile to use in place of password\n");
-		printf("  -k      Use \"keyfile\" for key\n");
-		printf("  -m      Sets mode of cipher to the given mode (128/192/256)\n");
-		printf("  -v(vv)  Run in verbose mode\n");
-		printf("\n");
+	/* Display help page on -h, --help */
+	if(strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+		show_usage(argv[0], 1);
 		return EXIT_SUCCESS;
 	}
 	
@@ -42,17 +49,44 @@ int main(int argc, char **argv) {
 	const char *path = argv[1]; // Descriptive alias for argv[1]
 	char kfname[256] = {0}, pass[128] = {0};
 	char *err; // Error handling for strtol
-	int e_flag = 1, r_flag = 0, key_flag = 0;
-	int g_flag = 0, mode;
+	static int e_flag = 1, r_flag = 0, key_flag = 0;
+	static int g_flag = 0, mode;
 	int c, len;
 	FILE *fv = NULL;
 
 	Iv = iv_ptr; // Set internal iv pointer to our buffer
+
+	static struct option long_options[] =
+	{
+		// These options set a flag.
+		{"recursive", no_argument, 0, 'r'},
+		{"encrypt", no_argument, 0, 'e'},
+		{"decrypt", no_argument, 0, 'd'},
+		{"gen-key", no_argument, 0, 'g'},
+		{"password", no_argument, 0, 'p'},
+		
+		// These options don’t set a flag.
+		// We distinguish them by their indices.
+		{"verbose", no_argument, 0, 'v'},
+		{"keyfile", required_argument, 0, 'k'},
+		{"mode", required_argument, 0, 'm'},
+		{0, 0, 0, 0}
+	};
+	int option_index = 0;
 	
-	while((c = getopt (argc, argv, "vredpgk:m:")) != -1) {
-		switch(c) {
-			case 'v':
-				v_flag += 1;
+	while(1)
+	{
+		// getopt_long stores the option index here.
+		c = getopt_long(argc, argv, "redgpk:m:", long_options, &option_index);
+		
+		// Detect the end of the options. 
+		if (c == -1) 
+			break;
+
+		switch(c)
+		{
+			case 0:
+				// If this option set a flag, do nothing else
 				break;
 			case 'r':
 				r_flag = 1;
@@ -60,14 +94,21 @@ int main(int argc, char **argv) {
 			case 'e':
 				e_flag = 1;
 				break;
-			case 'g':
-				g_flag = 1;
-				break;
 			case 'd':
 				e_flag = 0;
 				break;
-			case 'p': // Get and set password
+			case 'g':
+				g_flag = 1;
+				break;
+			case 'p':
 				key_flag = PASSWORD_MODE;
+				break;
+			case 'v':
+				v_flag += 1;
+				break;
+			case 'k':
+				strncpy(kfname, optarg, 256); // Copy name to place
+				key_flag = FILE_MODE;
 				break;
 			case 'm':
 				mode = (int) strtol(optarg, &err, 10);
@@ -78,25 +119,17 @@ int main(int argc, char **argv) {
 					setAESMode(mode);
 				}
 				break;
-			case 'k':
-				strncpy(kfname, optarg, 256); // Copy name to place
-				key_flag = FILE_MODE;
-				break;
-			case '?':
-				if(optopt == 'k' || optopt == 'm')
-					printf("Option '-%c' requires an argument.\n", optopt);
-				else
-					printf("Unknown option: '-%c'\n", optopt);
+			case '?': // When the user inevitably screws up an option
+				// getopt_long already printed an error, we just exit
 				return EXIT_FAILURE;
 				break;
-			default:
-				printf("The option '-%c' is unimplemented\n", optopt);
-				return EXIT_FAILURE;
+			default: // This shouldn't happen
+				exit(1);
 				break;
 		}
 	}
 	
-	// If the user does not provide a key to decrypt, die
+		// If the user does not provide a key to decrypt, die
 	if(!key_flag && !e_flag) {
 		printf("Please specify a key file to use for decrypting.\n");
 		return EXIT_FAILURE;

@@ -186,14 +186,6 @@ void traverse(const char *path, int e_flag) {
 	}
 }
 
-//DEBUG
-void printx(char *x, int len) {
-	printf("0x");
-	for(int i = 0; i < len; i+= sizeof(uint32_t)) 
-		printf("%X", *(uint32_t*)&x[i]);
-	printf("\n");
-}
-
 /*  Resulting output file will be in the format:
  *
  *  <Size of chunk> <CHUNK...>
@@ -333,13 +325,6 @@ int decrypt(const char *fname) {
 	// Generate and write checksum to beginning of file
 	sha256((char*)key, checkcheck, KEYLEN);
 	fread(checksum, 1, 32, fv);
-	
-	// DEBUG
-	printf("Checksum: ");
-	printx(checkcheck, 32);
-	printf("Read:     ");
-	printx(checksum, 32);
-	// DEBUG
 	
 	if(strncmp(checkcheck, checksum, 32) != 0) {
 		printf("Invalid checksum, quitting.\n");
