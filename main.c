@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
 		c = getopt_long(argc, argv, "redgpvk:m:", long_options, &option_index);
 		
 		// Detect the end of the options. 
-		if (c == -1) 
+		if(c == -1)
 			break;
 
 		switch(c)
@@ -158,7 +158,6 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	
 	// If the user is encrypting data, output a key file (with the exception of password-only encryption)
 	if( (e_flag && !key_flag) || (e_flag && g_flag) ) {
 		v_print(1, "Creating key file...\n");
