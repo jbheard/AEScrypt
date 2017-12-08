@@ -1,35 +1,6 @@
 #include "encrypt.h"
 
-#ifndef _WIN32
-#include <termios.h>
-
-int getpass(const char *prompt, char *buf, int len) {
-    struct termios oflags, nflags;
-	
-    /* disabling echo */
-    tcgetattr(fileno(stdin), &oflags);
-    nflags = oflags;
-    nflags.c_lflag &= ~ECHO;
-    nflags.c_lflag |= ECHONL;
-
-    if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
-        perror("tcsetattr failed to disable echo");
-        return -1;
-    }
-
-    printf("%s", prompt); // Print prompt
-    len = readline(buf, len, stdin); // Get line
-	
-    /* restore terminal */
-    if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
-        perror("tcsetattr failed to restore terminal");
-        return -1;
-    }
-	printf("\n");
-	return len;
-}
-
-#else
+#ifdef _WIN32
 #include <windows.h>
 
 int getpass(const char *prompt, char *buf, int len) {
@@ -56,6 +27,35 @@ int getpass(const char *prompt, char *buf, int len) {
 		perror("restoring console");
 		return -1;
 	}
+	printf("\n");
+	return len;
+}
+
+#else
+#include <termios.h>
+
+int getpass(const char *prompt, char *buf, int len) {
+    struct termios oflags, nflags;
+	
+    /* disabling echo */
+    tcgetattr(fileno(stdin), &oflags);
+    nflags = oflags;
+    nflags.c_lflag &= ~ECHO;
+    nflags.c_lflag |= ECHONL;
+
+    if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
+        perror("tcsetattr failed to disable echo");
+        return -1;
+    }
+
+    printf("%s", prompt); // Print prompt
+    len = readline(buf, len, stdin); // Get line
+	
+    /* restore terminal */
+    if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
+        perror("tcsetattr failed to restore terminal");
+        return -1;
+    }
 	printf("\n");
 	return len;
 }
@@ -99,7 +99,7 @@ void sha256(const char *in, char *out, int len) {
 	sha256_final(&ctx, (uint8_t*)out); // Get SHA256 hash for key
 }
 
-/* reads a line and trims and trailing whitespace (excluding spaces) */
+/* reads a line and trims any trailing whitespace (excluding spaces) */
 size_t readline(char *line, int max_bytes, FILE *stream) {
 	fgets(line, max_bytes, stream);
 	size_t len = strlen(line);
@@ -119,11 +119,11 @@ size_t readline(char *line, int max_bytes, FILE *stream) {
 	return len;
 }
 
-/* Returns 0 if path is not a file, nonzero otherwise */
+/* Returns nonzero if path is a file, zero otherwise */
 int is_file(const char *path) {
-	// TODO Check for symlinks on windows?
     struct stat path_stat;
 #ifdef _WIN32
+	/** TODO Check for symlinks on windows? **/
     stat(path, &path_stat);
 #else
 	// Handles symlinks on *nix machines
@@ -132,11 +132,11 @@ int is_file(const char *path) {
     return S_ISREG(path_stat.st_mode);
 }
 
-/* Returns 0 if path is not a directory, nonzero otherwise */
+/* Returns nonzero if path is a directory, zero otherwise */
 int is_dir(const char *path) {
-	// TODO Check for symlinks on windows?
     struct stat path_stat;
 #ifdef _WIN32
+	/** TODO Check for symlinks on windows? **/
     stat(path, &path_stat);
 #else
 	// Handles symlinks on *nix machines
@@ -237,16 +237,15 @@ int encrypt(const char *fname) {
 	
 	v_print(2, "Reading %s...\n", fname);
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
+	Iv = iv_ptr;
 	while( (len = fread(input, 1, CHUNK_SIZE, fv)) ) {
 		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN;
-		//DEBUG
-		Iv = iv_ptr; // This changes every time we do things, need to make sure all is good
 		if(pad > 0) {
 			// Put some zeroes into buffer for padding
 			memset(input + len, 0, pad);
 		}
 		// Encrypt the buffer
-		AES_CBC_encrypt_buffer(output, input, len+pad, key, Iv);
+		AES_CBC_encrypt_buffer(output, input, len+pad, key, 0);
 		
 		// Write size of data
 		fwrite(&len, sizeof len, 1, fv_out);
@@ -336,11 +335,10 @@ int decrypt(const char *fname) {
 	v_print(2, "Reading %s...\n", fname);
 	
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
+	Iv = iv_ptr; // Set iv initially, AES_CBC_decrypt_buffer will update as necessary
 	// Read size of data in loop
 	while( fread(&len, sizeof len, 1, fv) ) {
 		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN; // Get size of padding
-		// DEBUG
-		Iv = iv_ptr;
 		// Read correct number of bytes into buffer
 		err = fread(input, 1, len+pad, fv);
 		if(err != len+pad) {
@@ -348,7 +346,7 @@ int decrypt(const char *fname) {
 			return -1;
 		}
 		// Decrypt the data
-		AES_CBC_decrypt_buffer(output, input, len+pad, key, Iv);
+		AES_CBC_decrypt_buffer(output, input, len+pad, key, 0);
 		// Write only the data to output (not zero padding)
 		fwrite(output, 1, len, fv_out);
 		rtotal += len + pad + sizeof len;
