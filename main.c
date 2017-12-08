@@ -58,15 +58,11 @@ int main(int argc, char **argv) {
 
 	static struct option long_options[] =
 	{
-		// These options set a flag.
 		{"recursive", no_argument, 0, 'r'},
 		{"encrypt", no_argument, 0, 'e'},
 		{"decrypt", no_argument, 0, 'd'},
 		{"gen-key", no_argument, 0, 'g'},
 		{"password", no_argument, 0, 'p'},
-		
-		// These options don’t set a flag.
-		// We distinguish them by their indices.
 		{"verbose", no_argument, 0, 'v'},
 		{"keyfile", required_argument, 0, 'k'},
 		{"mode", required_argument, 0, 'm'},
@@ -77,7 +73,7 @@ int main(int argc, char **argv) {
 	while(1)
 	{
 		// getopt_long stores the option index here.
-		c = getopt_long(argc, argv, "redgpk:m:", long_options, &option_index);
+		c = getopt_long(argc, argv, "redgpvk:m:", long_options, &option_index);
 		
 		// Detect the end of the options. 
 		if (c == -1) 
