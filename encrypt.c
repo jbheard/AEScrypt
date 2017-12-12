@@ -3,6 +3,14 @@
 #ifdef _WIN32
 #include <windows.h>
 
+/**
+ * Prints a prompt and retrieves password from keyboard input. The console 
+ * will be 'muted' so the password does not appear onscreen.
+ *
+ * @param prompt The prompt string to print
+ * @param buf The buffer to read the password into
+ * @param len The maximum number of bytes to read into buf
+ */
 int getpass(const char *prompt, char *buf, int len) {
 	DWORD oflags;
 	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
@@ -34,6 +42,14 @@ int getpass(const char *prompt, char *buf, int len) {
 #else
 #include <termios.h>
 
+/**
+ * Prints a given prompt and gets password from keyboard input. The console 
+ * will be 'muted' so the password does not appear onscreen.
+ *
+ * @param prompt The prompt string to print
+ * @param buf The buffer to read the password into
+ * @param len The maximum number of bytes to read into buf
+ */
 int getpass(const char *prompt, char *buf, int len) {
     struct termios oflags, nflags;
 	
@@ -62,6 +78,14 @@ int getpass(const char *prompt, char *buf, int len) {
 
 #endif
 
+/**
+ * Generates a array of cryptographically secure pseudorandom numbers. This uses getrandom() 
+ * on *nix systems and CryptGenRandom on Windows. 
+ *
+ * @param buf The buffer to store the random numbers in
+ * @param bytes The number of bytes of randoms to generate
+ * @return 0 on success, nonzero on error
+ */
 int gen_randoms(char *buf, int bytes) {
 #ifdef _WIN32
 	HCRYPTPROV hCryptProv = 0; // Crypto context
@@ -86,8 +110,9 @@ uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, o
 uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
 
-/* 
+/**
  * Converts a string of bytes into a 256bit hash using SHA2-256
+ *
  * @param in The array of bytes to hash
  * @param out Pointer to output, needs at least 32 bytes free
  * @param len The number of bytes from in to hash
@@ -99,7 +124,14 @@ void sha256(const char *in, char *out, int len) {
 	sha256_final(&ctx, (uint8_t*)out); // Get SHA256 hash for key
 }
 
-/* reads a line and trims any trailing whitespace (excluding spaces) */
+/** 
+ * Reads a line and trims trailing whitespace, excluding spaces 
+ *
+ * @param line The buffer to read the line into
+ * @param max_bytes The maximum number of bytes to read
+ * @param stream The file stream to read from
+ * @return The number of bytes read into line
+ */
 size_t readline(char *line, int max_bytes, FILE *stream) {
 	fgets(line, max_bytes, stream);
 	size_t len = strlen(line);
@@ -119,7 +151,12 @@ size_t readline(char *line, int max_bytes, FILE *stream) {
 	return len;
 }
 
-/* Returns nonzero if path is a file, zero otherwise */
+/** 
+ * Checks if a given path is a file 
+ *
+ * @param path The path to test for file-ness
+ * @return nonzero if path is a file, 0 otherwise 
+ */
 int is_file(const char *path) {
     struct stat path_stat;
 #ifdef _WIN32
@@ -132,7 +169,12 @@ int is_file(const char *path) {
     return S_ISREG(path_stat.st_mode);
 }
 
-/* Returns nonzero if path is a directory, zero otherwise */
+/** 
+ * Checks if a given path is a directory
+ * 
+ * @param path The path totest for directory-ness
+ * @return nonzero if path is a directory, 0 otherwise 
+ */
 int is_dir(const char *path) {
     struct stat path_stat;
 #ifdef _WIN32
@@ -145,7 +187,12 @@ int is_dir(const char *path) {
     return S_ISDIR(path_stat.st_mode);
 }
 
-/* Traverses the directory recursively, en/decrypting each file it passes over */
+/** 
+ * Traverses the directory recursively, encrypting or decrypting each file it passes over 
+ *
+ * @param path The current path to traverse
+ * @param e_flag Whether to encrypt(1) or decrypt(0) the files found
+ */
 void traverse(const char *path, int e_flag) {
 	v_print(2, "Traversing directory \"%s\"\n", path);
 	char buf[1024] = {0};
@@ -186,7 +233,8 @@ void traverse(const char *path, int e_flag) {
 	}
 }
 
-/*  Resulting output file will be in the format:
+/**  
+ * Resulting output file will be in the format:
  *
  *  <Size of chunk> <CHUNK...>
  *  <Size of chunk> <CHUNK...>
@@ -194,7 +242,9 @@ void traverse(const char *path, int e_flag) {
  *  <EOF>
  * Where the size of the chunk is a uint32_t (4 byte unsigned int)
  * and the chunk is an array of type uint8_t*
- * Returns zero on success, nonzero on failure
+ *
+ * @param fname the name of the file to encrypt
+ * @return 0 on success, nonzero on failure
  */
 int encrypt(const char *fname) {
 	v_print(1, "Encrypting file \"%s\"\n", fname);
@@ -284,9 +334,12 @@ int encrypt(const char *fname) {
 	return 0;
 }
 
-/* Accepts a file that was encrypted using encrypt()
+/**
+ * Accepts a file that was encrypted using encrypt()
  * Decrypts the file and keeps the original file name
- * Returns 0 on success, -1 on failure
+ * 
+ * @param fname The name of the file to decrypt
+ * @return 0 on success, nonzero on failure
  */
 int decrypt(const char *fname) {
 	v_print(1, "Decrypting file \"%s\"\n", fname);
@@ -382,10 +435,14 @@ int decrypt(const char *fname) {
 	return 0;
 }
 
-
-/* Print a verbose message where v is the verbosity rank 
+/** 
+ * Print a verbose message where v is the verbosity rank 
  * e.g. if the call is v_print(2, "some message") then the program 
  * needs to be run with at least 2 v flags (-vv) to print the message
+ * 
+ * @param v The level of verbosity to display this message at
+ * @param format The format string
+ * @param ... A list of arguments corresponding to the format string
  */
 void v_print(int v, const char* format, ...) {
     va_list argptr;
