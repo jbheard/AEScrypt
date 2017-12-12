@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	
-		// If the user does not provide a key to decrypt, die
+	// If the user does not provide a key to decrypt, die
 	if(!key_flag && !e_flag) {
 		printf("Please specify a key file to use for decrypting.\n");
 		return EXIT_FAILURE;
@@ -153,8 +153,18 @@ int main(int argc, char **argv) {
 	
 	// Check if file name was selected
 	if(e_flag && kfname[0] != '\0') { 
-		if(access(kfname, F_OK) != 0) { // Check if file exists
-			g_flag = 1; // Set the flag to create the file if it doesn't exist
+		int a = (access(kfname, F_OK) == 0);
+		if(g_flag && a) {
+			char b[8] = {0};
+			printf("The file \"\" will be overwritten, would you like to continue? (Y/N) ");
+			fgets(b, 8, stdin);
+			if(b[0] != 'y' && b[0] != 'Y') { // Continue when input is 'y', or 'Y'
+				printf("Aborting...\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+		else if( !a ) { // If the file does not exist, set the flag to create it
+			g_flag = 1;
 		}
 	}
 
