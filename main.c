@@ -135,14 +135,11 @@ int main(int argc, char **argv) {
 	if(key_flag == PASSWORD_MODE) {
 		len = getpass("password: ", pass, 128);
 		v_print(2, "Creating and setting key.\n");
-		sha256(pass, (char*)key, len);    // hash the password to get our key
-		memcpy((char*)key, (char*)iv_ptr, BLOCKLEN); // Init the IV with our key
-		for(int i = 0; i < 4; i++) { // Do 4 rounds of SHA256 + XOR
-			// Modify the lower 128 bits of the IV to change resultant hash
-			for(int i = 0; i < BLOCKLEN/2; i++)
-				iv_ptr[i] ^= iv_ptr[BLOCKLEN-i-1];
+		for(int i = 0; i < 250000; i++)              // TODO: implement a KDF
+			sha256(pass, (char*)key, len);       // hash the password to get the key
+		memcpy((char*)key, (char*)iv_ptr, BLOCKLEN); // Init the IV with the key
+		for(int i = 0; i < 4; i++) // Do a few extra rounds rounds of SHA256 to change the IV
 			sha256((char*)iv_ptr, (char*)iv_ptr, BLOCKLEN);
-		}
 	} else if(e_flag) { // If we are encrypting and NOT using a password, generate IV randomly
 		v_print(2, "Generating AES initialization vector.\n");
 		if(gen_randoms((char*)iv_ptr, BLOCKLEN) != 0) { // Generate an init vector
