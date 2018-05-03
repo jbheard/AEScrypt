@@ -51,7 +51,6 @@ void traverse(const char *dir, int e_flag);
 int is_dir(const char *path);
 int is_file(const char *path);
 int gen_iv(uint8_t *ptr);
-void sha256(const char *in, char *out, int len);
 void v_print(int v, const char* format, ...);
 size_t readline(char *line, int max_bytes, FILE *stream);
 
