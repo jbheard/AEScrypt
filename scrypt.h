@@ -1,3 +1,10 @@
+/**
+ * Scrypt functions for password based key derivation
+ * Functions here are based off of RFC 2104, 2898, 7914
+ * and tested using the test vectors outlined in RFC7914
+ *
+ * @author Jacob Heard
+ */
 #include <stdint.h>
 
 struct ScryptInfo {
@@ -30,7 +37,7 @@ void initScryptInfo(struct ScryptInfo *info);
  * 
  * @return A derived key of length dklen bytes
  */
-char *scrypt(char *passwd, struct ScryptInfo *info);
+uint8_t *scrypt(char *passwd, int plen, struct ScryptInfo *info);
 
 /**
  * Based on RTF2104 HMAC specification + wikipedia pseudocode
@@ -42,7 +49,7 @@ char *scrypt(char *passwd, struct ScryptInfo *info);
  *
  * @return The HMAC of the message using key (allocated using malloc, must be freed by user)
  */
-void HMAC_SHA256(const char *key, int klen, const char *message, int mlen, char *out);
+void HMAC_SHA256(const uint8_t *key, int klen, const uint8_t*message, int mlen, uint8_t *out);
 
 /**
  * Extracts, and extends entropy from a given password into
@@ -57,4 +64,4 @@ void HMAC_SHA256(const char *key, int klen, const char *message, int mlen, char 
  * @return A pointer to a key of length dklen, the key 
  * is created using malloc and should be freed by the user
  */
-char *PBKDF2(const char *passwd, const char *salt, int slen, int c, int dklen);
+uint8_t *PBKDF2(const uint8_t *passwd, int plen, const uint8_t *salt, int slen, int c, int dklen);

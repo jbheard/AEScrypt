@@ -9,31 +9,31 @@
 /**************** Static Utility Functions *****************/
 
 // Function prototypes for static utilities (for use in this file only)
-static void XOR(char *, const char *, int);
-static void INT(char *, int32_t);
-static void malloc2D(char ***, int, int);
-static void free2D(char **, int);
+static void XOR(uint8_t *, const uint8_t *, int);
+static void INT(uint8_t *, int32_t);
+static void malloc2D(uint8_t ***, int, int);
+static void free2D(uint8_t **, int);
 static uint64_t integerify(void *, size_t);
-static void scryptBlockMix(int, char *);
-static void scryptROMix(int, int, char *);
+static void scryptBlockMix(int, uint8_t *);
+static void scryptROMix(int, int, uint8_t *);
 static void salsa20_core(uint32_t[16],uint32_t[16]);
 
-static void XOR(char *dest, const char *src, int len) {
+static void XOR(uint8_t *dest, const uint8_t *src, int len) {
 	for(int i = 0; i < len; i++)
 		dest[i] ^= src[i];
 }
 
-static void INT(char *res, int32_t i) {
+static void INT(uint8_t *res, int32_t i) {
 	res[0] = (i >> 24) & 0xFF;
 	res[1] = (i >> 16) & 0xFF;
 	res[2] = (i >>  8) & 0xFF;
 	res[3] = i & 0xFF;
 }
 
-static void malloc2D(char ***dest, int d1, int d2) {
-	char **T;
+static void malloc2D(uint8_t ***dest, int d1, int d2) {
+	uint8_t **T;
 
-	*dest = malloc(d1 * sizeof (char*));
+	*dest = malloc(d1 * sizeof (uint8_t*));
 	T = *dest;
 
 	if(T == NULL) {
@@ -49,7 +49,7 @@ static void malloc2D(char ***dest, int d1, int d2) {
 	}
 }
 
-static void free2D(char **dest, int d1) {
+static void free2D(uint8_t **dest, int d1) {
 	for(int i = 0; i < d1; i ++)
 		free(dest[i]);
 	free(dest);
@@ -61,10 +61,10 @@ static uint64_t integerify(void * B, size_t r) {
 	return (((uint64_t)(X[13]) << 32) + X[0]);
 }
 
-static void scryptBlockMix(int r, char *B) {
-	char *Y = malloc(128*r);
-	char X[64];
-	char T[64];
+static void scryptBlockMix(int r, uint8_t *B) {
+	uint8_t *Y = malloc(128*r);
+	uint8_t X[64];
+	uint8_t T[64];
 
 	memcpy(X, &B[64*(2*r-1)], 64);
 
@@ -82,12 +82,12 @@ static void scryptBlockMix(int r, char *B) {
 	free(Y);
 }
 
-static void scryptROMix(int r, int n, char *B) {
+static void scryptROMix(int r, int n, uint8_t *B) {
 	int j;
-	char **V;
+	uint8_t **V;
 
 	// Step 1
-	char *X = malloc(r*128);
+	uint8_t *X = malloc(r*128);
 	memcpy(X, B, r*128);	
 	malloc2D(&V, n, r*128);
 
@@ -153,18 +153,18 @@ void initScryptInfo(struct ScryptInfo *info) {
 	info->dklen = 32;
 }
 
-void HMAC_SHA256(const char *key, int klen, const char *message, int mlen, char *out) {
+void HMAC_SHA256(const uint8_t *key, int klen, const uint8_t *message, int mlen, uint8_t *out) {
 	const int bsize = 64; // sha256 block size (bytes)
 	const int hsize = 32; // sha256 output size (bytes)
 
-	char temp[mlen+bsize];       // for intermediate steps
-	char usekey[bsize];          // The buffer we will use for the key
-	char okp[bsize], ikp[bsize]; // Outer and Inner Key Pads
+	uint8_t temp[mlen+bsize];       // for intermediate steps
+	uint8_t usekey[bsize];          // The buffer we will use for the key
+	uint8_t okp[bsize], ikp[bsize]; // Outer and Inner Key Pads
 	memcpy(usekey, key, klen);   // Copy original key into key area
 
 	if(klen > bsize) {
 		// Hash key down to hash output size
-		sha256(key, usekey, klen);
+		sha256((char*)key, (char*)usekey, klen);
 		klen = hsize;
 	}
 	if(klen < bsize) {
@@ -180,22 +180,22 @@ void HMAC_SHA256(const char *key, int klen, const char *message, int mlen, char 
 	memcpy(temp, ikp, bsize);
 	memcpy(temp+bsize, message, mlen);
 	// hash inner key + message
-	sha256(temp, out, mlen+bsize);
+	sha256((char*)temp, (char*)out, mlen+bsize);
 
 	// Append result hash to outer key
 	memcpy(temp, okp, bsize);
 	memcpy(temp+bsize, out, hsize);
 	// Hash again for final result
-	sha256(temp, out, bsize+hsize);
+	sha256((char*)temp, (char*)out, bsize+hsize);
 }
 
-char *PBKDF2(const char *passwd, const char *salt, int slen, int c, int dklen) {
+uint8_t *PBKDF2(const uint8_t *passwd, int plen, const uint8_t *salt, int slen, int c, int dklen) {
 	const int hlen = 32;           // SHA-256 output length in bytes
 	int r, ctr = 0;                // Progress tracking
-	char T[hlen];                  // Tracks progress of final result
-	char *final = malloc(dklen);   // Final result, returned to user
-	char Uprev[hlen], Ucurr[hlen]; // For our previous and current blocks
-	char rnd1[slen+4];             // round 1 buffer (salt+INT(i))
+	uint8_t T[hlen];                  // Tracks progress of final result
+	uint8_t *final = malloc(dklen);   // Final result, returned to user
+	uint8_t Uprev[hlen], Ucurr[hlen]; // For our previous and current blocks
+	uint8_t rnd1[slen+4];             // round 1 buffer (salt+INT(i))
 	memcpy(rnd1, salt, slen);
 
 	// F(P, S, c, i) (RFC 2898 p10 step 3)
@@ -203,12 +203,12 @@ char *PBKDF2(const char *passwd, const char *salt, int slen, int c, int dklen) {
 		// Get 4 byte, big-endian integer repr
 		INT(rnd1+slen, i);
 		// Calculate initial hash (U_1) for this round
-		HMAC_SHA256(passwd, strlen(passwd), rnd1, slen+4, Uprev);
+		HMAC_SHA256(passwd, plen, rnd1, slen+4, Uprev);
 		memcpy(T, Uprev, hlen);
 
 		for(int j = 1; j < c; j++) {
 			// Get PRF output for current U
-			HMAC_SHA256(passwd, strlen(passwd), Uprev, hlen, Ucurr);
+			HMAC_SHA256(passwd, plen, Uprev, hlen, Ucurr);
 			// Running XOR of T with current U
 			XOR(T, Ucurr, hlen);
 			// Update previous
@@ -225,10 +225,10 @@ char *PBKDF2(const char *passwd, const char *salt, int slen, int c, int dklen) {
 	return final;
 }
 
-char *scrypt(char *passwd, struct ScryptInfo *info) {
+uint8_t *scrypt(char *passwd, int plen, struct ScryptInfo *info) {
 	// step 1
 	uint8_t *B;
-	B = PBKDF2(passwd, info->salt, info->slen, 1, info->p * 128 * info->r);
+	B = PBKDF2((uint8_t*)passwd, plen, info->salt, info->slen, 1, info->p * 128 * info->r);
 
 	// Step 2
 	for(int i = 0; i < info->p; i++) {
@@ -236,5 +236,5 @@ char *scrypt(char *passwd, struct ScryptInfo *info) {
 	}
 
 	// Step 3
-	return PBKDF2(passwd, B, info->r*info->p*128, 1, info->dklen);
+	return PBKDF2((uint8_t*)passwd, plen, B, info->r*info->p*128, 1, info->dklen);
 }
