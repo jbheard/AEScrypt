@@ -5,10 +5,16 @@
   *
   **/
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+  
 #include "encrypt.h"
+#include "scrypt.h"
 
-#define PASSWORD_MODE 1
-#define FILE_MODE     2
+#define PASSWORD_MODE  1
+#define FILE_MODE      2
 
 void show_usage(char *name, int more) {
 	printf("Usage: %s path [-r -e -d -p -g -k <keyfile> -m <mode>]\n", name);
@@ -56,8 +62,7 @@ int main(int argc, char **argv) {
 
 	Iv = iv_ptr; // Set internal iv pointer to our buffer
 
-	static struct option long_options[] =
-	{
+	static struct option long_options[] = {
 		{"recursive", no_argument, 0, 'r'},
 		{"encrypt", no_argument, 0, 'e'},
 		{"decrypt", no_argument, 0, 'd'},
@@ -70,8 +75,7 @@ int main(int argc, char **argv) {
 	};
 	int option_index = 0;
 	
-	while(1)
-	{
+	while(1) {
 		// getopt_long stores the option index here.
 		c = getopt_long(argc, argv, "redgpvk:m:", long_options, &option_index);
 		
@@ -79,8 +83,7 @@ int main(int argc, char **argv) {
 		if(c == -1)
 			break;
 
-		switch(c)
-		{
+		switch(c) {
 			case 0:
 				// If this option set a flag, do nothing else
 				break;
@@ -135,11 +138,25 @@ int main(int argc, char **argv) {
 	if(key_flag == PASSWORD_MODE) {
 		len = getpass("password: ", pass, 128);
 		v_print(2, "Creating and setting key.\n");
-		for(int i = 0; i < 250000; i++)              // TODO: implement a KDF
-			sha256(pass, (char*)key, len);       // hash the password to get the key
-		memcpy((char*)key, (char*)iv_ptr, BLOCKLEN); // Init the IV with the key
-		for(int i = 0; i < 4; i++) // Do a few extra rounds rounds of SHA256 to change the IV
-			sha256((char*)iv_ptr, (char*)iv_ptr, BLOCKLEN);
+		
+		// Scrypt variables
+		struct ScryptInfo info;
+		uint8_t salt[32], *ptr;
+
+		// Set up our parameters
+		gen_randoms((char*)salt, 32);
+		initScryptInfo(&info);
+		info.salt = salt;
+		info.slen = 32;
+		info.dklen = BLOCKLEN + 32;
+
+		// Run scrypt
+		ptr = scrypt(pass, len, &info);
+
+		// Use scrypt result for key and IV
+		memcpy(key, ptr, 32);
+		memcpy(iv_ptr, ptr+32, BLOCKLEN);
+		free(ptr); // Clean up
 	} else if(e_flag) { // If we are encrypting and NOT using a password, generate IV randomly
 		v_print(2, "Generating AES initialization vector.\n");
 		if(gen_randoms((char*)iv_ptr, BLOCKLEN) != 0) { // Generate an init vector

@@ -110,20 +110,6 @@ uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, o
 uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
 
 
-/**
- * Converts a string of bytes into a 256bit hash using SHA2-256
- *
- * @param in The array of bytes to hash
- * @param out Pointer to output, needs at least 32 bytes free
- * @param len The number of bytes from in to hash
- */
-void sha256(const char *in, char *out, int len) {
-	SHA256_CTX ctx; // Create CTX object on stack
-	sha256_init(&ctx); // Init CTX object
-	sha256_update(&ctx, (uint8_t*)in, len); // Add key data to CTX
-	sha256_final(&ctx, (uint8_t*)out); // Get SHA256 hash for key
-}
-
 /** 
  * Reads a line and trims trailing whitespace, excluding spaces 
  *
