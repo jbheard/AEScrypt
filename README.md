@@ -16,5 +16,4 @@ NOTICE: This tool was created as a learning experience. While the algorithms use
 + Add key checksum to encrypted files
 + Implement different key sizes
 + Rewrite AES to have GPU support, side-channel resistance
-+ Implement getopt_long and add better options
 + Add other crypto options (twofish, RSA, one-time-pad, viginere?, 3DES?)

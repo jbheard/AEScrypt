@@ -137,6 +137,14 @@ int main(int argc, char **argv) {
 	// Password mode; get password, set IV and key based on user input
 	if(key_flag == PASSWORD_MODE) {
 		len = getpass("password: ", pass, 128);
+		if( e_flag ) {
+			char rep_pass[128] = {0};
+			int rep_len = getpass("repeat  : ", rep_pass, 128);
+			if( rep_len != len || strcmp(pass, rep_pass) != 0 ) {
+				printf("Passwords do not match, aborting...\n");
+				return EXIT_FAILURE;
+			}
+		}
 		v_print(2, "Creating and setting key.\n");
 		
 		// Scrypt variables

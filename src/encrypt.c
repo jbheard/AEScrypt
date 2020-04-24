@@ -366,6 +366,8 @@ int decrypt(const char *fname) {
 	
 	if(strncmp(checkcheck, checksum, 32) != 0) {
 		printf("Invalid checksum, quitting.\n");
+		v_print(2, "Removing temp file...\n");
+		remove(buf);
 		free(output);
 		free(input);
 		exit(1);
