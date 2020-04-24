@@ -8,3 +8,13 @@ The tool can encrypt files and directories and take a user specified key or use 
 Credit to [kokke's Tiny AES](https://github.com/kokke/tiny-AES128-C) and [B-con's crypto-algorithms](https://github.com/B-Con/crypto-algorithms). 
 
 NOTICE: This tool was created as a learning experience. While the algorithms used are standardized, it is still possible vulnerabilities remain in the program.
+
+## TODO List
+
++ Build and test on \*nix environment
++ Add extension to encrypted files
++ Add key checksum to encrypted files
++ Implement different key sizes
++ Rewrite AES to have GPU support, side-channel resistance
++ Implement getopt_long and add better options
++ Add other crypto options (twofish, RSA, one-time-pad, viginere?, 3DES?)
