@@ -339,19 +339,7 @@ int decrypt(const char *fname) {
 	char buf[32] = {0};
 	char checksum[32], checkcheck[32];
 	int i = 1;
-	
-	// Get unused name for file
-	sprintf(buf, "temp-%d.temp", i);
-	while(access(buf, F_OK) != -1) {
-		sprintf(buf, "temp-%d.temp", ++i);
-	}
-	
-	FILE *fv_out = fopen(buf, "wb");
-	if(fv_out == NULL) {
-		v_print(1, "Internal file error.\n");
-		return -1;
-	}
-	
+		
 	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
@@ -364,13 +352,23 @@ int decrypt(const char *fname) {
 	sha256((char*)key, checkcheck, KEYLEN);
 	fread(checksum, 1, 32, fv);
 	
-	if(strncmp(checkcheck, checksum, 32) != 0) {
+	if(memcmp(checkcheck, checksum, 32) != 0) {
 		printf("Invalid checksum, quitting.\n");
-		v_print(2, "Removing temp file...\n");
-		remove(buf);
 		free(output);
 		free(input);
 		exit(1);
+	}
+	
+	// Get unused name for file
+	sprintf(buf, "temp-%d.temp", i);
+	while(access(buf, F_OK) != -1) {
+		sprintf(buf, "temp-%d.temp", ++i);
+	}
+	
+	FILE *fv_out = fopen(buf, "wb");
+	if(fv_out == NULL) {
+		v_print(1, "Internal file error.\n");
+		return -1;
 	}
 	
 	v_print(2, "Reading %s...\n", fname);
