@@ -240,22 +240,9 @@ int encrypt(const char *fname) {
 		return -1;
 	}
 
-	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
 	char checksum[32] = {0};
 	int i = 1;
-	
-	// Get unused name for file
-	sprintf(buf, "temp-%d.temp", i);
-	while(access(buf, F_OK) != -1) {
-		sprintf(buf, "temp-%d.temp", ++i);
-	}
-	
-	FILE *fv_out = fopen(buf, "wb");
-	if(fv_out == NULL) {
-		v_print(1, "Internal file error.\n");
-		return -1;
-	}
 
 	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
@@ -267,10 +254,28 @@ int encrypt(const char *fname) {
 		exit(1);
 	}
 
+	v_print(2, "Creating temp file...\n");	
+	// Get unused name for file
+	sprintf(buf, "temp-%d.temp", i);
+	while(access(buf, F_OK) != -1) {
+		sprintf(buf, "temp-%d.temp", ++i);
+	}
+
+	FILE *fv_out = fopen(buf, "wb");
+	if(fv_out == NULL) {
+		v_print(1, "Internal file error.\n");
+		return -1;
+	}
+
 	// Generate and write checksum to beginning of file
 	sha256((char*)key, checksum, KEYLEN);
-	fwrite(checksum, 1, 32, fv_out);
-	
+	if(fwrite(checksum, 1, 32, fv_out) != 32) {
+		printf("Error writing to file. Aborting...\n");
+		fclose(fv_out);
+		remove(buf);
+		exit(1);
+	}
+
 	v_print(2, "Reading %s...\n", fname);
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
 	Iv = iv_ptr;
@@ -335,11 +340,10 @@ int decrypt(const char *fname) {
 		return -1;
 	}
 	
-	v_print(2, "Creating temp file...\n");
 	char buf[32] = {0};
 	char checksum[32], checkcheck[32];
 	int i = 1;
-		
+	
 	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
 	uint8_t *output = malloc(CHUNK_SIZE); // Allocate chunk of memory for output
 	uint8_t *input = malloc(CHUNK_SIZE);  // Allocate chunk of memory for input
@@ -359,6 +363,8 @@ int decrypt(const char *fname) {
 		exit(1);
 	}
 	
+	v_print(2, "Creating temp file...\n");
+
 	// Get unused name for file
 	sprintf(buf, "temp-%d.temp", i);
 	while(access(buf, F_OK) != -1) {
@@ -367,7 +373,7 @@ int decrypt(const char *fname) {
 	
 	FILE *fv_out = fopen(buf, "wb");
 	if(fv_out == NULL) {
-		v_print(1, "Internal file error.\n");
+		v_print(1, "Error opening temp file '%s'.\n", buf);
 		return -1;
 	}
 	
