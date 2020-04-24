@@ -39,15 +39,27 @@ static const char kPathSeparator =
 #endif
 
 
-extern int v_flag, ecb_flag; // Verbose mode
-extern uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
-extern uint8_t iv_ptr[BLOCKLEN]; // Allocate some stack space for our init vector (AES)
+struct CryptOptions {
+	int e_flag; // 0 for decrypt, non-0 for encrypt
+	int v_flag; // How verbose to be
+	int r_flag; // non-zero for recursive (directories)
+	int g_flag; // Generate key file
+	int mode;   // Which aes mode to use (128, 192, 256)
+	int key_flag; // Type of key to use (password or file)
+	char kfname[256]; // Path to key file
+} options;
+
+struct CryptConfig {
+	uint8_t key[32];
+	uint8_t iv[BLOCKLEN];
+	uint8_t salt[32]; // only used for password mode
+};
 
 int getpass(const char *prompt, char *buf, int len);
 int gen_randoms(char *buf, int bytes);
-int encrypt(const char *fname);
-int decrypt(const char *fname);
-void traverse(const char *dir, int e_flag);
+int encrypt(const char *fname, struct CryptConfig config);
+int decrypt(const char *fname, struct CryptConfig config);
+void traverse(const char *dir, int e_flag, struct CryptConfig config);
 int is_dir(const char *path);
 int is_file(const char *path);
 int gen_iv(uint8_t *ptr);

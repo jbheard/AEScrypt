@@ -104,11 +104,7 @@ int gen_randoms(char *buf, int bytes) {
 	return 0;
 }
 
-int v_flag = 0; // Verbose mode
 int keysize = 128; // Default keysize
-uint8_t key[32]; // Length of key is 32, because of SHA256. If KEYLEN changes, only first XX bytes will be used.
-uint8_t iv_ptr[BLOCKLEN] = {0}; // Allocate some stack space for our init vector (AES)
-
 
 /** 
  * Reads a line and trims trailing whitespace, excluding spaces 
@@ -179,7 +175,7 @@ int is_dir(const char *path) {
  * @param path The current path to traverse
  * @param e_flag Whether to encrypt(1) or decrypt(0) the files found
  */
-void traverse(const char *path, int e_flag) {
+void traverse(const char *path, int e_flag, struct CryptConfig config) {
 	v_print(2, "Traversing directory \"%s\"\n", path);
 	char buf[1024] = {0};
 	DIR *dir;
@@ -200,15 +196,15 @@ void traverse(const char *path, int e_flag) {
 				v_print(3, "%s is a file. Working...\n", buf);
 				
 				if(e_flag)
-					encrypt(buf);
+					encrypt(buf, config);
 				else
-					decrypt(buf);
+					decrypt(buf, config);
 			}
 			else if(is_dir(buf)) { // Check if directory
 				// Check directory is not ./ or ../
 				if(strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..")) {
 					v_print(3, "%s is a directory. Traversing...\n", buf);
-					traverse(buf, e_flag); // Go a level deeper
+					traverse(buf, e_flag, config); // Go a level deeper
 				}
 			}
 		}
@@ -232,7 +228,7 @@ void traverse(const char *path, int e_flag) {
  * @param fname the name of the file to encrypt
  * @return 0 on success, nonzero on failure
  */
-int encrypt(const char *fname) {
+int encrypt(const char *fname, struct CryptConfig config) {
 	v_print(1, "Encrypting file \"%s\"\n", fname);
 	FILE *fv = fopen(fname, "rb+");
 	if(fv == NULL) {
@@ -268,7 +264,7 @@ int encrypt(const char *fname) {
 	}
 
 	// Generate and write checksum to beginning of file
-	sha256((char*)key, checksum, KEYLEN);
+	sha256((char*)config.key, checksum, KEYLEN);
 	if(fwrite(checksum, 1, 32, fv_out) != 32) {
 		printf("Error writing to file. Aborting...\n");
 		fclose(fv_out);
@@ -278,7 +274,7 @@ int encrypt(const char *fname) {
 
 	v_print(2, "Reading %s...\n", fname);
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
-	Iv = iv_ptr;
+	Iv = config.iv;
 	while( (len = fread(input, 1, CHUNK_SIZE, fv)) ) {
 		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN;
 		if(pad > 0) {
@@ -286,7 +282,7 @@ int encrypt(const char *fname) {
 			memset(input + len, 0, pad);
 		}
 		// Encrypt the buffer
-		AES_CBC_encrypt_buffer(output, input, len+pad, key, 0);
+		AES_CBC_encrypt_buffer(output, input, len+pad, config.key, 0);
 		
 		// Write size of data
 		fwrite(&len, sizeof len, 1, fv_out);
@@ -332,7 +328,7 @@ int encrypt(const char *fname) {
  * @param fname The name of the file to decrypt
  * @return 0 on success, nonzero on failure
  */
-int decrypt(const char *fname) {
+int decrypt(const char *fname, struct CryptConfig config) {
 	v_print(1, "Decrypting file \"%s\"\n", fname);
 	FILE *fv = fopen(fname, "rb");
 	if(fv == NULL) {
@@ -353,7 +349,7 @@ int decrypt(const char *fname) {
 	}
 	
 	// Generate and write checksum to beginning of file
-	sha256((char*)key, checkcheck, KEYLEN);
+	sha256((char*)config.key, checkcheck, KEYLEN);
 	fread(checksum, 1, 32, fv);
 	
 	if(memcmp(checkcheck, checksum, 32) != 0) {
@@ -380,7 +376,7 @@ int decrypt(const char *fname) {
 	v_print(2, "Reading %s...\n", fname);
 	
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
-	Iv = iv_ptr; // Set iv initially, AES_CBC_decrypt_buffer will update as necessary
+	Iv = config.iv; // Set iv initially, AES_CBC_decrypt_buffer will update as necessary
 	// Read size of data in loop
 	while( fread(&len, sizeof len, 1, fv) ) {
 		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN; // Get size of padding
@@ -391,7 +387,7 @@ int decrypt(const char *fname) {
 			return -1;
 		}
 		// Decrypt the data
-		AES_CBC_decrypt_buffer(output, input, len+pad, key, 0);
+		AES_CBC_decrypt_buffer(output, input, len+pad, config.key, 0);
 		// Write only the data to output (not zero padding)
 		fwrite(output, 1, len, fv_out);
 		rtotal += len + pad + sizeof len;
@@ -439,7 +435,7 @@ int decrypt(const char *fname) {
 void v_print(int v, const char* format, ...) {
     va_list argptr;
     va_start(argptr, format);
-    if(v_flag >= v)
+    if(options.v_flag >= v)
 		vprintf(format, argptr);
     va_end(argptr);
 }
