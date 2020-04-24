@@ -104,8 +104,6 @@ int gen_randoms(char *buf, int bytes) {
 	return 0;
 }
 
-int keysize = 128; // Default keysize
-
 /** 
  * Reads a line and trims trailing whitespace, excluding spaces 
  *
