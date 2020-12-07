@@ -213,6 +213,21 @@ void traverse(const char *path, int e_flag, struct CryptConfig config) {
 	}
 }
 
+// TODO: Actually use these methods
+void writeCryptHeader(struct CryptConfig *config, const char *checksum, FILE *fp) {
+	fwrite(&(config->version), 4, 1, fp);
+	fwrite(config->iv, 1, AES_BLOCKLEN, fp);
+	fwrite(config->salt, 1, SALT_LEN, fp);
+	fwrite(checksum, 1, CHECKSUM_SIZE, fp);
+}
+
+void readCryptHeader(struct CryptConfig *config, char *checksum, FILE *fp) {
+	fread(&(config->version), 4, 1, fp);
+	fread(config->iv, 1, AES_BLOCKLEN, fp);
+	fread(config->salt, 1, SALT_LEN, fp);
+	fread(checksum, 1, CHECKSUM_SIZE, fp);
+}
+
 /**  
  * Resulting output file will be in the format:
  *
@@ -235,7 +250,7 @@ int encrypt(const char *fname, struct CryptConfig config) {
 	}
 
 	char buf[32] = {0};
-	char checksum[32] = {0};
+	char checksum[CHECKSUM_SIZE] = {0};
 	int i = 1;
 
 	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
@@ -263,7 +278,7 @@ int encrypt(const char *fname, struct CryptConfig config) {
 
 	// Generate and write checksum to beginning of file
 	sha256((char*)config.key, checksum, KEYLEN);
-	if(fwrite(checksum, 1, 32, fv_out) != 32) {
+	if(fwrite(checksum, 1, CHECKSUM_SIZE, fv_out) != CHECKSUM_SIZE) {
 		printf("Error writing to file. Aborting...\n");
 		fclose(fv_out);
 		remove(buf);
@@ -274,7 +289,7 @@ int encrypt(const char *fname, struct CryptConfig config) {
 	uint32_t len, err, pad, rtotal = 0, wtotal = 0;
 	Iv = config.iv;
 	while( (len = fread(input, 1, CHUNK_SIZE, fv)) ) {
-		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN;
+		pad = (AES_BLOCKLEN - (len % AES_BLOCKLEN)) % AES_BLOCKLEN;
 		if(pad > 0) {
 			// Put some zeroes into buffer for padding
 			memset(input + len, 0, pad);
@@ -335,7 +350,7 @@ int decrypt(const char *fname, struct CryptConfig config) {
 	}
 	
 	char buf[32] = {0};
-	char checksum[32], checkcheck[32];
+	char checksum[CHECKSUM_SIZE], checkcheck[CHECKSUM_SIZE];
 	int i = 1;
 	
 	v_print(3, "Allocating %d bytes for AES...\n", CHUNK_SIZE*2);
@@ -348,9 +363,9 @@ int decrypt(const char *fname, struct CryptConfig config) {
 	
 	// Generate and write checksum to beginning of file
 	sha256((char*)config.key, checkcheck, KEYLEN);
-	fread(checksum, 1, 32, fv);
+	fread(checksum, 1, CHECKSUM_SIZE, fv);
 	
-	if(memcmp(checkcheck, checksum, 32) != 0) {
+	if(memcmp(checkcheck, checksum, CHECKSUM_SIZE) != 0) {
 		printf("Invalid checksum, quitting.\n");
 		free(output);
 		free(input);
@@ -377,7 +392,7 @@ int decrypt(const char *fname, struct CryptConfig config) {
 	Iv = config.iv; // Set iv initially, AES_CBC_decrypt_buffer will update as necessary
 	// Read size of data in loop
 	while( fread(&len, sizeof len, 1, fv) ) {
-		pad = (BLOCKLEN - (len % BLOCKLEN)) % BLOCKLEN; // Get size of padding
+		pad = (AES_BLOCKLEN - (len % AES_BLOCKLEN)) % AES_BLOCKLEN; // Get size of padding
 		// Read correct number of bytes into buffer
 		err = fread(input, 1, len+pad, fv);
 		if(err != len+pad) {

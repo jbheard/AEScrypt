@@ -27,8 +27,16 @@
 #include "sha256.h"   // SHA-256 hashing
 
 #ifndef CHUNK_SIZE    // Max size of chunk to read at a time
-	#define CHUNK_SIZE		2048
+	#define CHUNK_SIZE		8192
 #endif
+
+#define MAX_KEY_SIZE         32
+#define SALT_LEN             32
+#define CHECKSUM_SIZE        32
+#define CRYPT_CONFIG_PV1     1
+#define CRYPT_CONFIG_KV1     2
+#define CRYPT_HEADER_VERSION 1
+
 
 /** Cross platform path separator **/
 static const char kPathSeparator =
@@ -50,9 +58,10 @@ struct CryptOptions {
 } options;
 
 struct CryptConfig {
-	uint8_t key[32];
-	uint8_t iv[BLOCKLEN];
-	uint8_t salt[32]; // only used for password mode
+	uint32_t version;
+	uint8_t key[MAX_KEY_SIZE];
+	uint8_t iv[AES_BLOCKLEN];
+	uint8_t salt[SALT_LEN]; // only used for password mode
 };
 
 int getpass(const char *prompt, char *buf, int len);
@@ -62,7 +71,6 @@ int decrypt(const char *fname, struct CryptConfig config);
 void traverse(const char *dir, int e_flag, struct CryptConfig config);
 int is_dir(const char *path);
 int is_file(const char *path);
-int gen_iv(uint8_t *ptr);
 void v_print(int v, const char* format, ...);
 size_t readline(char *line, int max_bytes, FILE *stream);
 

@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-  
+
 #include "encrypt.h"
 #include "scrypt.h"
 
@@ -143,7 +143,7 @@ int handleOptions(const char *path) {
 		GetConfigFromPassword(&config);
 	} else if(options.e_flag) { // If we are encrypting and NOT using a password, generate IV randomly
 		v_print(2, "Generating AES initialization vector.\n");
-		if(gen_randoms((char*)config.iv, BLOCKLEN) != 0) { // Generate an init vector
+		if(gen_randoms((char*)config.iv, AES_BLOCKLEN) != 0) { // Generate an init vector
 			printf("Error generating IV\n");
 			return EXIT_FAILURE;
 		}
@@ -207,18 +207,20 @@ void GetConfigFromPassword(struct CryptConfig *config) {
 	uint8_t *ptr;
 
 	// Set up our parameters
-	gen_randoms((char*)config->salt, 32);
+	if( options.e_flag ) {
+		gen_randoms((char*)config->salt, SALT_LEN);
+	}
 	initScryptInfo(&info);
 	info.salt = config->salt;
-	info.slen = 32;
-	info.dklen = BLOCKLEN + 32;
+	info.slen = SALT_LEN;
+	info.dklen = AES_BLOCKLEN + MAX_KEY_SIZE;
 
 	// Run scrypt
 	ptr = scrypt(pass, len, &info);
 
 	// Use scrypt result for key and IV
-	memcpy(config->key, ptr, 32);
-	memcpy(config->iv, ptr+32, BLOCKLEN);
+	memcpy(config->key, ptr, MAX_KEY_SIZE);
+	memcpy(config->iv, ptr+MAX_KEY_SIZE, AES_BLOCKLEN);
 	free(ptr); // Clean up
 }
 
@@ -254,7 +256,7 @@ void DoKeyFile(struct CryptConfig config) {
 		uint16_t kl = (uint16_t)KEYLEN;
 		fwrite(&kl, sizeof kl, 1, fv); // Write key size
 		fwrite(config.key, 1, KEYLEN, fv); // Write key
-		fwrite(config.iv, 1, BLOCKLEN, fv); // Write IV
+		fwrite(config.iv, 1, AES_BLOCKLEN, fv); // Write IV
 		fclose(fv); // Close file
 		printf("Created key file \"%s\"\n", options.kfname); // Let user know name of key file
 	} else if(options.key_flag == FILE_MODE) {
@@ -269,7 +271,7 @@ void DoKeyFile(struct CryptConfig config) {
 		v_print(1, "Reading key from file.\n");
 		fread(&kl, sizeof kl, 1, fv); // Get key size
 		fread(config.key, 1, kl, fv); // Read key
-		fread(config.iv, 1, BLOCKLEN, fv); //  Read IV
+		fread(config.iv, 1, AES_BLOCKLEN, fv); //  Read IV
 		fclose(fv); // Close file
 		
 		// In case we are in the wrong mode

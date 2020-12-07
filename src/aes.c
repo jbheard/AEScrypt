@@ -486,7 +486,7 @@ void AES_ECB_decrypt(const uint8_t* input, const uint8_t* key, uint8_t *output, 
 static void XorWithIv(uint8_t* buf)
 {
   uint8_t i;
-  for (i = 0; i < BLOCKLEN; ++i) //WAS for(i = 0; i < KEYLEN; ++i) but the block in AES is always 128bit so 16 bytes!
+  for (i = 0; i < AES_BLOCKLEN; ++i) //WAS for(i = 0; i < KEYLEN; ++i) but the block in AES is always 128bit so 16 bytes!
   {
     buf[i] ^= Iv[i];
   }
@@ -495,7 +495,7 @@ static void XorWithIv(uint8_t* buf)
 void AES_CBC_encrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, const uint8_t* key, const uint8_t* iv)
 {
   uintptr_t i;
-  uint8_t extra = length % BLOCKLEN; /* Remaining bytes in the last non-full block */
+  uint8_t extra = length % AES_BLOCKLEN; /* Remaining bytes in the last non-full block */
 
   // Skip the key expansion if key is passed as 0
   if (0 != key)
@@ -509,15 +509,15 @@ void AES_CBC_encrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
     Iv = (uint8_t*)iv;
   }
 
-  for (i = 0; i < length; i += BLOCKLEN)
+  for (i = 0; i < length; i += AES_BLOCKLEN)
   {
     XorWithIv(input);
-    memcpy(output, input, BLOCKLEN);
+    memcpy(output, input, AES_BLOCKLEN);
     state = (state_t*)output;
     Cipher();
     Iv = output;
-    input += BLOCKLEN;
-    output += BLOCKLEN;
+    input += AES_BLOCKLEN;
+    output += AES_BLOCKLEN;
   }
 
   if (extra)
@@ -531,7 +531,7 @@ void AES_CBC_encrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
 void AES_CBC_decrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, const uint8_t* key, const uint8_t* iv)
 {
   uintptr_t i;
-  uint8_t extra = length % BLOCKLEN; /* Remaining bytes in the last non-full block */
+  uint8_t extra = length % AES_BLOCKLEN; /* Remaining bytes in the last non-full block */
 
   // Skip the key expansion if key is passed as 0
   if (0 != key)
@@ -546,15 +546,15 @@ void AES_CBC_decrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
     Iv = (uint8_t*)iv;
   }
 
-  for (i = 0; i < length; i += BLOCKLEN)
+  for (i = 0; i < length; i += AES_BLOCKLEN)
   {
-    memcpy(output, input, BLOCKLEN);
+    memcpy(output, input, AES_BLOCKLEN);
     state = (state_t*)output;
     InvCipher();
     XorWithIv(output);
     Iv = input;
-    input += BLOCKLEN;
-    output += BLOCKLEN;
+    input += AES_BLOCKLEN;
+    output += AES_BLOCKLEN;
   }
 
   if (extra)

@@ -16,7 +16,7 @@ void AES_CBC_decrypt_buffer(uint8_t* output, uint8_t* input, uint32_t length, co
 /*****************************************************************************/
 // The number of columns comprising a state in AES. This is a constant in AES. Value=4
 #define Nb 4
-#define BLOCKLEN 16 //Block length in bytes AES is 128b block only
+#define AES_BLOCKLEN 16 //Block length in bytes AES is 128b block only
 
 extern int KEYLEN;
 // Initial Vector used only for CBC mode
