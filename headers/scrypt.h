@@ -1,3 +1,6 @@
+#ifndef _SCRYPT_H_
+#define _SCRYPT_H_
+
 /**
  * Scrypt functions for password based key derivation
  * Functions here are based off of RFC 2104, 2898, 7914
@@ -65,3 +68,5 @@ void HMAC_SHA256(const uint8_t *key, int klen, const uint8_t*message, int mlen, 
  * is created using malloc and should be freed by the user
  */
 uint8_t *PBKDF2(const uint8_t *passwd, int plen, const uint8_t *salt, int slen, int c, int dklen);
+
+#endif // _SCRYPT_H_

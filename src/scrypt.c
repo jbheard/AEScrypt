@@ -1,5 +1,5 @@
 #include <stdlib.h> // malloc, free
-#include <stdio.h> // malloc, free
+#include <stdio.h>  // malloc, free
 #include <stdint.h> // int32_t
 #include <string.h> // memcpy
 
@@ -226,15 +226,16 @@ uint8_t *PBKDF2(const uint8_t *passwd, int plen, const uint8_t *salt, int slen, 
 }
 
 uint8_t *scrypt(char *passwd, int plen, struct ScryptInfo *info) {
-	// step 1
 	uint8_t *B;
 	B = PBKDF2((uint8_t*)passwd, plen, info->salt, info->slen, 1, info->p * 128 * info->r);
 
-	// Step 2
 	for(int i = 0; i < info->p; i++) {
 		scryptROMix(info->r, info->n, B + 128 * info->r * i);
 	}
 
-	// Step 3
-	return PBKDF2((uint8_t*)passwd, plen, B, info->r*info->p*128, 1, info->dklen);
+	uint8_t* result = PBKDF2((uint8_t*)passwd, plen, B, info->r*info->p*128, 1, info->dklen);
+	free(B);
+	
+	return result;
 }
+

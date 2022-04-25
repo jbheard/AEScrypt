@@ -8,10 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <getopt.h>
+#include <unistd.h>
 #include <string.h>
 
-#include "encrypt.h"
-#include "scrypt.h"
+#include "cryptstructs.h"
+#include "filequeue.h"
 #include "utils.h"
 
 void show_usage(char *name, int more) {
@@ -52,8 +54,10 @@ int main(int argc, char **argv) {
 	const char *path = argv[1];
 	char *err; // Error handling for strtol
 	int opt;
+	struct CryptSecrets secrets;
+	secrets.password = NULL; // Must be NULL by default
 
-	options.e_flag = 1;
+	options.e_flag = 1; // encrypt by default
 
 	static struct option long_options[] = {
 		{"recursive", no_argument, 0, 'r'},
@@ -99,7 +103,7 @@ int main(int argc, char **argv) {
 				options.v_flag += 1;
 				break;
 			case 'k':
-				strncpy(options.kfname, optarg, 256); // Copy name to place
+				strncpy(options.keyFilePath, optarg, 256); // Copy name to place
 				options.key_flag = FILE_MODE;
 				break;
 			case 'm':
@@ -111,8 +115,8 @@ int main(int argc, char **argv) {
 					setAESMode(options.mode);
 				}
 				break;
-			case '?': // When the user inevitably screws up an option
-				// getopt_long already printed an error, we just exit
+			case '?':
+				// getopt_long already printed an error
 				return EXIT_FAILURE;
 				break;
 			default: // This shouldn't happen
@@ -121,5 +125,53 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	return handleOptions(path);
+	if(!options.key_flag && !options.e_flag) {
+		printf("Please specify a key file or use password for decrypting.\n");
+		return EXIT_FAILURE;
+	}
+	if(!options.r_flag && is_dir(path)) {
+		printf("\"%s\" is a directory, to recursively encrypt all files, use -r\n");
+		return EXIT_FAILURE;
+	}
+	
+	if(options.e_flag) {
+		int exists = (options.keyFilePath[0] != '\0' && access(options.keyFilePath, F_OK) == 0);
+		if(options.g_flag && exists) {
+			char choice[8] = {0};
+			printf("The file \"%s\" will be overwritten, would you like to continue? (Y/N) ", options.keyFilePath);
+			fgets(choice, 8, stdin);
+			if(choice[0] != 'y' && choice[0] != 'Y') {
+				printf("Aborting...\n");
+				exit(EXIT_FAILURE);
+			}
+		} else if( !exists ) {
+			// If the file does not exist, set the flag to create it
+			options.g_flag = 1;
+		}
+	}
+	
+	if(options.key_flag == PASSWORD_MODE) {
+		secrets.password = malloc(MAX_PASSWORD_LENGTH+1);
+		getPassword(secrets.password);
+	} else {
+		if(gen_randoms((char*)secrets.key, MAX_KEY_SIZE) != 0) {
+			printf("Error generating entropy for key\n");
+			return EXIT_FAILURE;
+		}
+		v_print(2, "Generated key\n");
+	}
+	
+	if(options.g_flag) {
+		writeKeyFile(&secrets);
+	} else if(options.key_flag == FILE_MODE) {
+		readKeyFile(&secrets);
+	}
+	
+	struct PathNode* start = pushNextPath(NULL, path);
+	doAllFiles(start, secrets);
+
+	free(secrets.password);
+
+	return EXIT_SUCCESS;
 }
+

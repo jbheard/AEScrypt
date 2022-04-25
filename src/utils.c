@@ -2,125 +2,178 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/stat.h> // lstat, S_ISDIR, S_ISREG
+#include <unistd.h>   // access
 
 #include "encrypt.h"
+#include "cryptstructs.h"
 #include "scrypt.h"
 #include "utils.h"
 
-int handleOptions(const char *path) {
-	struct CryptConfig config;
 
-	// If the user does not provide a key to decrypt, die
-	if(!options.key_flag && !options.e_flag) {
-		printf("Please specify a key file or use password for decrypting.\n");
-		return EXIT_FAILURE;
-	}
-
-	if(options.key_flag == PASSWORD_MODE) {
-		GetConfigFromPassword(&config);
-	} else if(options.e_flag) { // If we are encrypting and NOT using a password, generate IV randomly
-		v_print(2, "Generating AES initialization vector.\n");
-		if(gen_randoms((char*)config.iv, AES_BLOCKLEN) != 0) { // Generate an init vector
-			printf("Error generating IV\n");
-			return EXIT_FAILURE;
-		}
-	}
-
-	if(options.e_flag && options.kfname[0] != '\0') { 
-		int exists = (access(options.kfname, F_OK) == 0);
-		if(options.g_flag && exists) {
-			char choice[4] = {0};
-			printf("The file \"\" will be overwritten, would you like to continue? (Y/N) ");
-			fgets(choice, 4, stdin);
-			if(choice[0] != 'y' && choice[0] != 'Y') {
-				printf("Aborting...\n");
-				exit(EXIT_FAILURE);
-			}
-		} else if( !exists ) {
-			// If the file does not exist, set the flag to create it
-			options.g_flag = 1;
-		}
-	}
-
-	DoKeyFile(config);
-
-	if(!options.r_flag && !is_file(path)) {
-		printf("Error: \"%s\" could not be found.\n", path);
-		return EXIT_FAILURE;
-	}
-
-	if(options.r_flag) {
-		traverse(path, options.e_flag, config);
-	} else if(is_file(path)) {
-		if(options.e_flag) {
-			encrypt(path, config);
-		} else {
-			decrypt(path, config);
-		}
-	} else {
-		printf("Error: \"%s\" is not a file\n", path);
-		return EXIT_FAILURE;
-	}
-
-	return EXIT_SUCCESS;
+int is_file(const char *path) {
+    struct stat path_stat;
+#ifdef _WIN32
+	/** TODO Check for symlinks on windows? **/
+    stat(path, &path_stat);
+#else
+	// Handles symlinks on *nix machines
+	lstat(path, &path_stat);
+#endif
+    return S_ISREG(path_stat.st_mode);
 }
 
+int is_dir(const char *path) {
+    struct stat path_stat;
+#ifdef _WIN32
+	/** TODO Check for symlinks on windows? **/
+    stat(path, &path_stat);
+#else
+	// Handles symlinks on *nix machines
+	lstat(path, &path_stat);
+#endif
+    return S_ISDIR(path_stat.st_mode);
+}
+
+void v_print(int v, const char* format, ...) {
+    va_list argptr;
+    va_start(argptr, format);
+    if(options.v_flag >= v)
+		vprintf(format, argptr);
+    va_end(argptr);
+}
+
+size_t readline(char *line, int max_bytes, FILE *stream) {
+	fgets(line, max_bytes, stream);
+	size_t len = strlen(line);
+	int whitespace = 1; // loop condition, there is still whitespace
+	while(whitespace) {
+		switch(line[len-1]) {
+		case '\n': case '\r':
+		case '\f': case '\t':
+			line[len-1] = '\0';
+			len--;
+			break;
+		default:
+			whitespace = 0;
+			break;
+		}
+	}
+	return len;
+}
+
+int gen_randoms(char *buf, int bytes) {
+#ifdef _WIN32
+	HCRYPTPROV hCryptProv = 0; // Crypto context
+	if(CryptAcquireContext(&hCryptProv, NULL, NULL, PROV_RSA_FULL, 0) == 0) {
+		return 1;
+	}
+	if(CryptGenRandom(hCryptProv, bytes, (PBYTE)buf) == 0) { // Generate random number
+		return 1;
+	}
+#else
+	//TODO verify this works on older *nix distros, or find workaround
+	if(getrandom(buf, bytes, GRND_NONBLOCK) == -1) {
+		return 1;
+	}
+#endif
+	return 0;
+}
+
+#ifdef _WIN32
+#include <windows.h>
+
+int getpass(const char *prompt, char *buf, int len) {
+	DWORD oflags;
+	HANDLE h = GetStdHandle(STD_INPUT_HANDLE);
+
+	// Get initial console mode
+	if(!GetConsoleMode(h, &oflags)) {
+		perror("retrieving console mode");
+		return -1;
+	}
+	// Disable echo on input
+	if(!SetConsoleMode(h, oflags & (~ENABLE_ECHO_INPUT))){
+		perror("disabling output");
+		return -1;
+	}
+
+	// Read the actual password
+    printf("%s", prompt); // Print prompt
+    len = readline(buf, len, stdin); // Get password & length
+	
+	// Restore console state
+	if(!SetConsoleMode(h, oflags)) {
+		perror("restoring console");
+		return -1;
+	}
+	printf("\n");
+	return len;
+}
+
+#else
+#include <termios.h>
+
+int getpass(const char *prompt, char *buf, int len) {
+    struct termios oflags, nflags;
+	
+    /* disabling echo */
+    tcgetattr(fileno(stdin), &oflags);
+    nflags = oflags;
+    nflags.c_lflag &= ~ECHO;
+    nflags.c_lflag |= ECHONL;
+
+    if (tcsetattr(fileno(stdin), TCSANOW, &nflags) != 0) {
+        perror("tcsetattr failed to disable echo");
+        return -1;
+    }
+
+    printf("%s", prompt); // Print prompt
+    len = readline(buf, len, stdin); // Get line
+	
+    /* restore terminal */
+    if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
+        perror("tcsetattr failed to restore terminal");
+        return -1;
+    }
+	printf("\n");
+	return len;
+}
+
+#endif
+
 void getPassword(char *passwd) {
-	static char firstTry[128] = {0};
+	static char firstTry[MAX_PASSWORD_LENGTH] = {0};
 	// Password mode; get password, set IV and key based on user input
-	int len = getpass("password: ", firstTry, 128);
+	int len = getpass("password: ", firstTry, MAX_PASSWORD_LENGTH);
 	if(options.e_flag) {
-		char secondTry[128] = {0};
-		getpass("repeat  : ", secondTry, 128);
-		if( strcmp(firstTry, secondTry) != 0 ) {
+		char secondTry[MAX_PASSWORD_LENGTH] = {0};
+		getpass("repeat  : ", secondTry, MAX_PASSWORD_LENGTH);
+		if(strcmp(firstTry, secondTry) != 0) {
 			printf("Passwords do not match, aborting...\n");
 			exit(EXIT_FAILURE);
 		}
-		strncpy(passwd, firstTry, 128);
 	}
+	strncpy(passwd, firstTry, MAX_PASSWORD_LENGTH);
 }
 
-void GetConfigFromPassword(struct CryptConfig *config) {
-	char pass[129] = {0}; // Extra byte in case password is 128 chars long
-	v_print(2, "Creating and setting key.\n");
-
-	// Scrypt variables
-	struct ScryptInfo info;
-	uint8_t *ptr;
-
-	// Set up our parameters
-	if( options.e_flag ) {
-		gen_randoms((char*)config->salt, SALT_LEN);
-	}
-	initScryptInfo(&info);
-	info.salt = config->salt;
-	info.slen = SALT_LEN;
-	info.dklen = AES_BLOCKLEN + MAX_KEY_SIZE;
-	getPassword(pass);
-
-	// Run scrypt
-	ptr = scrypt(pass, strlen(pass), &info);
-
-	// Use scrypt result for key and IV
-	memcpy(config->key, ptr, MAX_KEY_SIZE);
-	memcpy(config->iv, ptr+MAX_KEY_SIZE, AES_BLOCKLEN);
-	free(ptr); // Clean up
-}
-
-static void readKey(struct CryptConfig config) {
+void readKeyFile(struct CryptSecrets* secrets) {
 	// A key file was specified for encryption
 	// Open the file and read the key
-	FILE *fv = fopen(options.kfname, "rb");
+	FILE *fv = fopen(options.keyFilePath, "rb");
 	if(fv == NULL) {
-		printf("Error opening key file \"%s\".\n", options.kfname);
+		printf("Error opening key file \"%s\".\n", options.keyFilePath);
 		exit(EXIT_FAILURE);
 	}
 	uint16_t kl;
 	v_print(1, "Reading key from file.\n");
 	fread(&kl, sizeof kl, 1, fv); // Get key size
-	fread(config.key, 1, kl, fv); // Read key
-	fread(config.iv, 1, AES_BLOCKLEN, fv); //  Read IV
+	int read = fread(secrets->key, 1, kl, fv); // Read key
 	fclose(fv); // Close file
+	
+	if(read != kl) {
+		exit(EXIT_FAILURE);
+	}
 	
 	// In case we are in the wrong mode
 	if(kl != KEYLEN) {
@@ -129,48 +182,100 @@ static void readKey(struct CryptConfig config) {
 	}
 }
 
-static void writeKey(struct CryptConfig config) {
+void writeKeyFile(struct CryptSecrets* secrets) {
 	v_print(1, "Creating key file...\n");
-	int i = 1;
-	
-	// Create random seed for key
-	if(options.key_flag != PASSWORD_MODE) { // If we didn't already get a password for this
-		if(gen_randoms((char*)config.key, KEYLEN) != 0) {
-			printf("Error generating entropy for key\n");
-			exit(EXIT_FAILURE);
-		}
-	}
 	
 	// If the key file name was not specified
-	if(options.kfname[0] == '\0') {
+	if(options.keyFilePath[0] == '\0') {
+		int i = 1;
 		// Get unused name for file
-		sprintf(options.kfname, "key-%d.aes", i);
-		while(access(options.kfname, F_OK) != -1) {
-			sprintf(options.kfname, "key-%d.aes", ++i);
+		sprintf(options.keyFilePath, "key-%d.aes", i);
+		while(access(options.keyFilePath, F_OK) != -1) {
+			sprintf(options.keyFilePath, "key-%d.aes", ++i);
 		}
 	}
 	
-	// Create file and write key+iv
-	FILE *fv = fopen(options.kfname, "wb");
+	// Create file and write key
+	FILE *fv = fopen(options.keyFilePath, "wb");
 	if(fv == NULL) {
 		printf("Error: Could not create key file. Aborting...\n");
 		exit(EXIT_FAILURE);
 	}
 	uint16_t kl = (uint16_t)KEYLEN;
 	fwrite(&kl, sizeof kl, 1, fv); // Write key size
-	fwrite(config.key, 1, KEYLEN, fv); // Write key
-	fwrite(config.iv, 1, AES_BLOCKLEN, fv); // Write IV
+	int wrote = fwrite(secrets->key, 1, KEYLEN, fv); // Write key
 	fclose(fv); // Close file
-	printf("Created key file \"%s\"\n", options.kfname); // Let user know name of key file
-
+	
+	if(wrote != kl) {
+		exit(EXIT_FAILURE);
+	}
+	
+	printf("Created key file \"%s\"\n", options.keyFilePath); // Let user know name of key file
 }
 
-void DoKeyFile(struct CryptConfig config) {
-	// If the user is encrypting data, output a key file (with the exception of password-only encryption)
-	if( (options.e_flag && !options.key_flag) || (options.e_flag && options.g_flag) ) {
-		writeKey(config);
-	} else if(options.key_flag == FILE_MODE) {
-		readKey(config);
+FILE *getTempFile(char* nameBuffer) {
+	int i = 1;
+	
+	// Get unused name for file
+	sprintf(nameBuffer, "temp-%d.temp", i);
+	while(access(nameBuffer, F_OK) != -1) {
+		sprintf(nameBuffer, "temp-%d.temp", ++i);
+	}
+
+	FILE *fv = fopen(nameBuffer, "wb");
+	if(fv == NULL) {
+		v_print(3, "Error creating temp file \"%s\".\n", nameBuffer);
+		return NULL;
+	}
+	return fv;
+}
+
+void getConfigFromPassword(struct CryptConfig* config, struct CryptSecrets* secrets) {
+	// Scrypt variables
+	struct ScryptInfo info;
+	uint8_t *ptr;
+
+	initScryptInfo(&info);
+	info.salt = config->salt;
+	info.slen = SALT_LEN;
+	info.dklen = (AES_BLOCKLEN + MAX_KEY_SIZE)*2;
+
+	// Run scrypt
+	ptr = scrypt(secrets->password, strlen(secrets->password), &info);
+
+	// Use scrypt result for key and IV
+	memcpy(secrets->key, ptr, MAX_KEY_SIZE);
+	memcpy(config->iv, ptr + MAX_KEY_SIZE, AES_BLOCKLEN);
+	free(ptr); // Clean up
+}
+
+int replace(const char* src, const char* dst) {
+	int err;
+	remove(dst); // Remove old file
+	if( (err = rename(src, dst)) != 0) {
+		printf("Error moving file \"%s\" to \"%s\".\n", src, dst);
+		v_print(2, "Removing temp file...\n");
+		remove(src);
+		return EXIT_FAILURE;
+	}
+	
+	return EXIT_SUCCESS;
+}
+
+void doAllFiles(
+	struct PathNode* start,
+	struct CryptSecrets secrets
+) {
+	char path[PATH_MAX_LENGTH+1] = {0};
+	int encrypt = options.e_flag;
+	
+	while(start) {
+		start = getNextPath(start, path);
+		if(encrypt) {
+			encryptFile(path, secrets);
+		} else {
+			decryptFile(path, secrets);
+		}
 	}
 }
 
